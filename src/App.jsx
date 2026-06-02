@@ -164,6 +164,17 @@ export default function App() {
   const [copied, setCopied]         = useState(false);
   const [collapsedGroups, setCollapsed] = useState({});
   const stepsScrollRef = useRef(null);
+  const fileInputRef   = useRef(null);
+
+  const handleFile = (file) => {
+    if (!file) return;
+    const supported = [".txt",".md",".json",".js",".ts",".jsx",".tsx",".py",".yaml",".yml",".xml",".html",".css",".sql",".csv"];
+    const ext = "." + file.name.split(".").pop().toLowerCase();
+    if (!supported.includes(ext)) { alert(`Unsupported type. Supported: ${supported.join(", ")}`); return; }
+    const reader = new FileReader();
+    reader.onload = e => setInput(e.target.result);
+    reader.readAsText(file);
+  };
 
   const output    = compress(input, opts);
   const tokBefore = estimateTokens(input);
@@ -363,12 +374,24 @@ export default function App() {
           {mobileTab === "compress" ? (
             <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
               {/* Input */}
-              <div style={{ flex: "0 0 38%", padding: "10px 12px", borderBottom: "1px solid #1e2440", display: "flex", flexDirection: "column", gap: 6 }}>
+              <div
+                style={{ flex: "0 0 38%", padding: "10px 12px", borderBottom: "1px solid #1e2440", display: "flex", flexDirection: "column", gap: 6 }}
+                onDragOver={e => e.preventDefault()}
+                onDrop={e => { e.preventDefault(); handleFile(e.dataTransfer.files[0]); }}
+              >
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <span style={{ fontSize: 9, color: "#5a6a90", letterSpacing: ".12em", textTransform: "uppercase", fontWeight: 700 }}>Input</span>
-                  <span style={{ fontSize: 9, color: "#4a5a80" }}>{tokBefore} tok</span>
+                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    <span style={{ fontSize: 9, color: "#4a5a80" }}>{tokBefore} tok</span>
+                    <button className="btn" onClick={() => fileInputRef.current?.click()}
+                      style={{ background: "#1a1e30", color: "#7a8eb0", border: "1px solid #252a42", padding: "2px 8px", fontSize: 10, borderRadius: 3 }}>
+                      ↑ File
+                    </button>
+                    {input && <button className="btn" onClick={() => setInput("")}
+                      style={{ background: "transparent", color: "#4a5a80", border: "1px solid #1e2440", padding: "2px 6px", fontSize: 10, borderRadius: 3 }}>✕</button>}
+                  </div>
                 </div>
-                <textarea value={input} onChange={e => setInput(e.target.value)} placeholder="Paste prompt here..."
+                <textarea value={input} onChange={e => setInput(e.target.value)} placeholder="Paste prompt or upload file..."
                   style={{ flex: 1, background: "#0f1220", border: "1px solid #1e2440", borderRadius: 5, color: "#c5d0e0", fontFamily: "inherit", fontSize: 12, lineHeight: 1.7, padding: "10px 12px" }}/>
               </div>
               {/* Output */}
@@ -426,12 +449,31 @@ export default function App() {
         {/* Right */}
         <div style={{ display: "grid", gridTemplateRows: "30% 70%", overflow: "hidden", minHeight: 0 }}>
           {/* Input — compact */}
-          <div style={{ padding: "10px 20px", borderBottom: "1px solid #1e2440", display: "flex", flexDirection: "column", gap: 6, minHeight: 0 }}>
+          <div
+            style={{ padding: "10px 20px", borderBottom: "1px solid #1e2440", display: "flex", flexDirection: "column", gap: 6, minHeight: 0 }}
+            onDragOver={e => e.preventDefault()}
+            onDrop={e => { e.preventDefault(); handleFile(e.dataTransfer.files[0]); }}
+          >
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
               <span style={{ fontSize: 10, color: "#5a6a90", letterSpacing: ".12em", textTransform: "uppercase", fontWeight: 600 }}>Input prompt</span>
-              <span style={{ fontSize: 10, color: "#4a5a80" }}>{tokBefore.toLocaleString()} tokens</span>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <span style={{ fontSize: 10, color: "#4a5a80" }}>{tokBefore.toLocaleString()} tokens</span>
+                <input ref={fileInputRef} type="file" accept=".txt,.md,.json,.js,.ts,.jsx,.tsx,.py,.yaml,.yml,.xml,.html,.css,.sql,.csv" style={{ display: "none" }} onChange={e => handleFile(e.target.files[0])}/>
+                <button className="btn"
+                  onClick={() => fileInputRef.current?.click()}
+                  style={{ background: "#1a1e30", color: "#7a8eb0", border: "1px solid #252a42", padding: "3px 10px", fontSize: 11, borderRadius: 4 }}>
+                  ↑ Upload file
+                </button>
+                {input && (
+                  <button className="btn"
+                    onClick={() => setInput("")}
+                    style={{ background: "transparent", color: "#4a5a80", border: "1px solid #1e2440", padding: "3px 8px", fontSize: 11, borderRadius: 4 }}>
+                    ✕
+                  </button>
+                )}
+              </div>
             </div>
-            <textarea value={input} onChange={e => setInput(e.target.value)} placeholder="Paste your prompt here..."
+            <textarea value={input} onChange={e => setInput(e.target.value)} placeholder="Paste your prompt here, or drag & drop a file..."
               style={{ flex: 1, minHeight: 0, background: "#111525", border: "1px solid #1e2440", borderRadius: 6, color: "#c5d0e0", fontFamily: "inherit", fontSize: 12, lineHeight: 1.75, padding: "10px 14px", transition: "border-color .15s" }}/>
           </div>
 
