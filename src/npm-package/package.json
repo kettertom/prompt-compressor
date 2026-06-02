@@ -1,0 +1,28 @@
+{
+  "name": "prompt-compressor",
+  "version": "1.0.0",
+  "description": "Rule-based prompt compression — reduce LLM token usage without a model, without an API, without sending data anywhere.",
+  "type": "module",
+  "main": "index.js",
+  "module": "index.js",
+  "types": "index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./index.js",
+      "types": "./index.d.ts"
+    }
+  },
+  "files": ["index.js", "index.d.ts", "src/"],
+  "keywords": [
+    "prompt", "compression", "llm", "tokens", "bedrock", "openai", "anthropic",
+    "claude", "gpt", "langchain", "mcp", "rag", "nlp"
+  ],
+  "author": "Tom Ketter",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kettertom/prompt-compressor.git"
+  },
+  "homepage": "https://prompt-compressor.com",
+  "engines": { "node": ">=16" }
+}
