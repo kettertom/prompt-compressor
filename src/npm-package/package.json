@@ -1,6 +1,6 @@
 {
   "name": "prompt-compressor",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Rule-based prompt compression — reduce LLM token usage without a model, without an API, without sending data anywhere.",
   "type": "module",
   "main": "index.js",

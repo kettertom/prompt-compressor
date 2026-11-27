@@ -58,7 +58,15 @@ const { output, stats } = compress(text, {
 });
 ```
 
-## In a MCP server
+## Use it as an MCP server (no code)
+
+Want your AI assistant to compress prompts for you? Use [`prompt-compressor-mcp`](https://www.npmjs.com/package/prompt-compressor-mcp):
+
+```bash
+claude mcp add prompt-compressor -- npx -y prompt-compressor-mcp
+```
+
+## Inside your own MCP server
 
 ```js
 import { compress } from 'prompt-compressor';
