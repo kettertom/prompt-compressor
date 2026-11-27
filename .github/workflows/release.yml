@@ -74,8 +74,10 @@ jobs:
       - name: Install and test
         if: steps.check.outputs.skip == 'false'
         run: |
-          # registry can take a minute to serve a just-published library version
-          for i in 1 2 3 4 5 6; do npm install && break; echo "retrying in 20s"; sleep 20; done
+          # Test against the library code in this commit. The npm registry can
+          # take several minutes to serve a just-published library version, and
+          # waiting for it made this job fail twice. Publishing doesn't need it.
+          npm install --no-save ../npm-package
           npm test
       - name: Publish
         if: steps.check.outputs.skip == 'false'
