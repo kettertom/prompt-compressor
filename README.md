@@ -5,6 +5,8 @@
 [![npm](https://img.shields.io/npm/v/prompt-compressor)](https://www.npmjs.com/package/prompt-compressor)
 [![Live](https://img.shields.io/badge/web-prompt--compressor.com-blue)](https://prompt-compressor.com)
 
+⭐ **Find it useful? [Star it on GitHub](https://github.com/kettertom/prompt-compressor)** · 🐛 **Found a bug or have an idea? [Open an issue](https://github.com/kettertom/prompt-compressor/issues/new)**
+
 ---
 
 ## Two ways to use it
