@@ -68,26 +68,39 @@ export function stripAnsiCodes(text) {
  * @risk very-low | @savings 10–20%
  */
 export function removeFiller(text) {
-  const patterns = [
-    [/please note that\s[^.!?\n]+[.!?]/gi, ""],
-    [/it is important to note that\s[^.!?\n]+[.!?]/gi, ""],
-    [/it's important to note that\s[^.!?\n]+[.!?]/gi, ""],
-    [/for example[,:]?\s[^.!?\n]+[.!?]/gi, ""],
-    [/e\.g\.[,\s][^.!?\n]+[.!?]/gi, ""],
-    [/i\.e\.[,\s][^.!?\n]+[.!?]/gi, ""],
-    [/in other words[,:]?\s[^.!?\n]+[.!?]/gi, ""],
-    [/as mentioned (above|earlier|before)[,:]?\s[^.!?\n]+[.!?]/gi, ""],
-    [/note:\s[^.!?\n]+[.!?]/gi, ""],
-    [/\bkindly\b\s/gi, ""],
-    [/\bplease\s+be\s+advised\s+that\b/gi, ""],
-    [/\bfeel free to\b/gi, ""],
-    [/\bit goes without saying\b[^.!?\n]+[.!?]/gi, ""],
-    [/\bwhat this means is that\b\s*/gi, ""],
-    [/\bit should be noted that\b\s*/gi, ""],
+  // Lead-in phrases: drop the phrase, KEEP the sentence that follows it.
+  // (Earlier versions deleted the whole sentence, which removed real instructions,
+  // e.g. "Please note that you must never share PII." disappeared entirely.)
+  const leadIns = [
+    /\bplease note that[,]?\s+/gi,
+    /\bit is important to note that[,]?\s+/gi,
+    /\bit's important to note that[,]?\s+/gi,
+    /\bit should be noted that[,]?\s+/gi,
+    /\bplease be advised that\s+/gi,
+    /\bit goes without saying(?: that)?[,]?\s+/gi,
+    /\bwhat this means is that\s+/gi,
+    /\bin other words[,:]?\s+/gi,
+    /\bas mentioned (?:above|earlier|before)[,:]?\s+/gi,
+    /\bfor the record[,:]?\s+/gi,
+    /(?<![\w-])note:\s+/gi,
+    /\bkindly\s+/gi,
+    /\bfeel free to\s+/gi,
+  ];
+  const words = [
+    [/\bthe reason for this is(?: that)?\s+/gi, "because "],
   ];
   let out = text;
-  for (const [p, r] of patterns) out = out.replace(p, r);
-  return out.replace(/\s{2,}/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+  for (const p of leadIns) {
+    out = out.replace(p, (m, offset, str) => {
+      // remember to capitalize the next letter if the phrase started a sentence
+      const before = str.slice(0, offset);
+      return /(^|[.!?:]\s*|\n\s*)$/.test(before) ? "\u0000CAP" : "";
+    });
+  }
+  for (const [p, r] of words) out = out.replace(p, r);
+  out = out.replace(/\u0000CAP(\s*)(\S)/g, (_, ws, ch) => ws + ch.toUpperCase()).replace(/\u0000CAP/g, "");
+  // collapse runs of spaces/tabs only — keep newlines and paragraph structure
+  return out.replace(/[ \t]{2,}/g, " ").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
 /**
@@ -158,7 +171,7 @@ export function removeHedging(text) {
   ];
   let out = text;
   for (const [p, r] of patterns) out = out.replace(p, r);
-  return out.replace(/\s{2,}/g, " ").trim();
+  return out.replace(/[ \t]{2,}/g, " ").replace(/[ \t]+\n/g, "\n").trim();
 }
 
 /**
@@ -196,7 +209,7 @@ export function removeParentheticals(text) {
   ];
   let out = text;
   for (const p of patterns) out = out.replace(p, "");
-  return out.replace(/\s{2,}/g, " ").trim();
+  return out.replace(/[ \t]{2,}/g, " ").replace(/[ \t]+\n/g, "\n").trim();
 }
 
 /**
@@ -361,13 +374,17 @@ export function deduplicateLines(text) {
  * @risk low | @savings 5–15%
  */
 export function deduplicateSentences(text) {
-  const sentences = text.split(/(?<=[.!?])\s+/);
+  // Split but keep each separator, so line breaks and paragraphs survive.
+  const parts = text.split(/((?<=[.!?])\s+)/);
   const seen = new Set();
-  return sentences.filter(s => {
+  let out = "";
+  for (let i = 0; i < parts.length; i += 2) {
+    const s = parts[i], sep = parts[i + 1] ?? "";
     const key = s.toLowerCase().replace(/[^a-z0-9]/g, "");
-    if (key.length < 8 || !seen.has(key)) { seen.add(key); return true; }
-    return false;
-  }).join(" ").trim();
+    if (key.length < 8 || !seen.has(key)) { seen.add(key); out += s + sep; }
+    else if (sep.includes("\n") && !/\n\s*$/.test(out)) out = out.replace(/[ \t]*$/, "") + "\n";
+  }
+  return out.replace(/\n{3,}/g, "\n\n").trim();
 }
 
 /**

@@ -30,11 +30,15 @@ const VAR_PATTERNS = [
 export function protectVariables(text) {
   const map = {};
   let counter = 0;
+  const byMatch = new Map();
   let result = text;
   for (const pattern of VAR_PATTERNS) {
     result = result.replace(new RegExp(pattern.source, "g"), match => {
+      // Same variable → same placeholder, so duplicate lines still dedupe.
+      if (byMatch.has(match)) return byMatch.get(match);
       const key = `\x00VAR${counter++}\x00`;
       map[key] = match;
+      byMatch.set(match, key);
       return key;
     });
   }
@@ -107,28 +111,39 @@ export function cleanPunctuation(text) {
 // ════════════════════════════════════════════════════════════
 
 export function removeFiller(text) {
-  const patterns = [
-    [/please note that\s[^.!?\n]+[.!?]/gi, ""],
-    [/it is important to note that\s[^.!?\n]+[.!?]/gi, ""],
-    [/it's important to note that\s[^.!?\n]+[.!?]/gi, ""],
-    [/for example[,:]?\s[^.!?\n]+[.!?]/gi, ""],
-    [/e\.g\.[,\s][^.!?\n]+[.!?]/gi, ""],
-    [/i\.e\.[,\s][^.!?\n]+[.!?]/gi, ""],
-    [/in other words[,:]?\s[^.!?\n]+[.!?]/gi, ""],
-    [/as mentioned (above|earlier|before)[,:]?\s[^.!?\n]+[.!?]/gi, ""],
-    [/note:\s[^.!?\n]+[.!?]/gi, ""],
-    [/\bkindly\b\s/gi, ""],
-    [/\bplease\s+be\s+advised\s+that\b/gi, ""],
-    [/\bfeel free to\b/gi, ""],
-    [/\bit goes without saying\b[^.!?\n]+[.!?]/gi, ""],
-    [/\bwhat this means is that\b\s*/gi, ""],
-    [/\bthe reason for this is (that)?\b\s*/gi, "because "],
-    [/\bit should be noted that\b\s*/gi, ""],
-    [/\bfor the record[,:]?\b\s*/gi, ""],
+  // Lead-in phrases: drop the phrase, KEEP the sentence that follows it.
+  // (Earlier versions deleted the whole sentence, which removed real instructions,
+  // e.g. "Please note that you must never share PII." disappeared entirely.)
+  const leadIns = [
+    /\bplease note that[,]?\s+/gi,
+    /\bit is important to note that[,]?\s+/gi,
+    /\bit's important to note that[,]?\s+/gi,
+    /\bit should be noted that[,]?\s+/gi,
+    /\bplease be advised that\s+/gi,
+    /\bit goes without saying(?: that)?[,]?\s+/gi,
+    /\bwhat this means is that\s+/gi,
+    /\bin other words[,:]?\s+/gi,
+    /\bas mentioned (?:above|earlier|before)[,:]?\s+/gi,
+    /\bfor the record[,:]?\s+/gi,
+    /(?<![\w-])note:\s+/gi,
+    /\bkindly\s+/gi,
+    /\bfeel free to\s+/gi,
+  ];
+  const words = [
+    [/\bthe reason for this is(?: that)?\s+/gi, "because "],
   ];
   let out = text;
-  for (const [p, r] of patterns) out = out.replace(p, r);
-  return out.replace(/\s{2,}/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+  for (const p of leadIns) {
+    out = out.replace(p, (m, offset, str) => {
+      // remember to capitalize the next letter if the phrase started a sentence
+      const before = str.slice(0, offset);
+      return /(^|[.!?:]\s*|\n\s*)$/.test(before) ? "\u0000CAP" : "";
+    });
+  }
+  for (const [p, r] of words) out = out.replace(p, r);
+  out = out.replace(/\u0000CAP(\s*)(\S)/g, (_, ws, ch) => ws + ch.toUpperCase()).replace(/\u0000CAP/g, "");
+  // collapse runs of spaces/tabs only — keep newlines and paragraph structure
+  return out.replace(/[ \t]{2,}/g, " ").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
 export function removeHedging(text) {
@@ -147,7 +162,7 @@ export function removeHedging(text) {
   ];
   let out = text;
   for (const [p, r] of patterns) out = out.replace(p, r);
-  return out.replace(/\s{2,}/g, " ").trim();
+  return out.replace(/[ \t]{2,}/g, " ").replace(/[ \t]+\n/g, "\n").trim();
 }
 
 export function shortenPhrases(text) {
@@ -254,7 +269,7 @@ export function removeTransitions(text) {
     const re = new RegExp(`(^|(?<=[.!?]\\s))${t}[,]?\\s+`, "gim");
     out = out.replace(re, "$1");
   }
-  return out.replace(/\s{2,}/g, " ").trim();
+  return out.replace(/[ \t]{2,}/g, " ").replace(/[ \t]+\n/g, "\n").trim();
 }
 
 export function removeParentheticals(text) {
@@ -270,7 +285,7 @@ export function removeParentheticals(text) {
   ];
   let out = text;
   for (const p of patterns) out = out.replace(p, "");
-  return out.replace(/\s{2,}/g, " ").trim();
+  return out.replace(/[ \t]{2,}/g, " ").replace(/[ \t]+\n/g, "\n").trim();
 }
 
 export function numberWordsToNumerals(text) {

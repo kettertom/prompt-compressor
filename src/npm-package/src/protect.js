@@ -24,11 +24,15 @@ const VAR_PATTERNS = [
 export function protectVariables(text) {
   const map = {};
   let counter = 0;
+  const byMatch = new Map();
   let result = text;
   for (const pattern of VAR_PATTERNS) {
     result = result.replace(new RegExp(pattern.source, "g"), match => {
+      // Same variable → same placeholder, so duplicate lines still dedupe.
+      if (byMatch.has(match)) return byMatch.get(match);
       const key = `\x00VAR${counter++}\x00`;
       map[key] = match;
+      byMatch.set(match, key);
       return key;
     });
   }
