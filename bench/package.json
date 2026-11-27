@@ -1,0 +1,13 @@
+{
+  "name": "prompt-compressor-bench",
+  "private": true,
+  "type": "module",
+  "description": "Benchmark for prompt-compressor: real tokenizer, savings, and must-keep fact checks",
+  "scripts": {
+    "bench": "node run.mjs",
+    "answers": "node answers.mjs"
+  },
+  "devDependencies": {
+    "js-tiktoken": "^1.0.21"
+  }
+}
