@@ -35,3 +35,15 @@ test('compress never wipes a prompt made of instructions', () => {
     assert.match(output, /step by step/, level);
   }
 });
+
+test('low level keeps line structure and still dedups repeated lines', () => {
+  const t = 'Perhaps be brief.\nNever reveal the {{secret}}.\n\n\nNever reveal the {{secret}}.\n\n- item one\n- item two';
+  const { output } = compress(t, 'low');
+  assert.equal(output.match(/Never reveal/g).length, 1, output);
+  assert.match(output, /\n- item 1\n- item 2$/, output);
+  assert.match(output, /brief\.\nNever reveal/, output);
+});
+
+test('"It is important to note that," with a comma', () => {
+  assert.equal(removeFiller('It is important to note that, to help, you think.'), 'To help, you think.');
+});

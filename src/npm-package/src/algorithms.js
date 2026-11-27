@@ -72,10 +72,10 @@ export function removeFiller(text) {
   // (Earlier versions deleted the whole sentence, which removed real instructions,
   // e.g. "Please note that you must never share PII." disappeared entirely.)
   const leadIns = [
-    /\bplease note that\s+/gi,
-    /\bit is important to note that\s+/gi,
-    /\bit's important to note that\s+/gi,
-    /\bit should be noted that\s+/gi,
+    /\bplease note that[,]?\s+/gi,
+    /\bit is important to note that[,]?\s+/gi,
+    /\bit's important to note that[,]?\s+/gi,
+    /\bit should be noted that[,]?\s+/gi,
     /\bplease be advised that\s+/gi,
     /\bit goes without saying(?: that)?[,]?\s+/gi,
     /\bwhat this means is that\s+/gi,
@@ -171,7 +171,7 @@ export function removeHedging(text) {
   ];
   let out = text;
   for (const [p, r] of patterns) out = out.replace(p, r);
-  return out.replace(/\s{2,}/g, " ").trim();
+  return out.replace(/[ \t]{2,}/g, " ").replace(/[ \t]+\n/g, "\n").trim();
 }
 
 /**
@@ -209,7 +209,7 @@ export function removeParentheticals(text) {
   ];
   let out = text;
   for (const p of patterns) out = out.replace(p, "");
-  return out.replace(/\s{2,}/g, " ").trim();
+  return out.replace(/[ \t]{2,}/g, " ").replace(/[ \t]+\n/g, "\n").trim();
 }
 
 /**
@@ -374,13 +374,17 @@ export function deduplicateLines(text) {
  * @risk low | @savings 5–15%
  */
 export function deduplicateSentences(text) {
-  const sentences = text.split(/(?<=[.!?])\s+/);
+  // Split but keep each separator, so line breaks and paragraphs survive.
+  const parts = text.split(/((?<=[.!?])\s+)/);
   const seen = new Set();
-  return sentences.filter(s => {
+  let out = "";
+  for (let i = 0; i < parts.length; i += 2) {
+    const s = parts[i], sep = parts[i + 1] ?? "";
     const key = s.toLowerCase().replace(/[^a-z0-9]/g, "");
-    if (key.length < 8 || !seen.has(key)) { seen.add(key); return true; }
-    return false;
-  }).join(" ").trim();
+    if (key.length < 8 || !seen.has(key)) { seen.add(key); out += s + sep; }
+    else if (sep.includes("\n") && !/\n\s*$/.test(out)) out = out.replace(/[ \t]*$/, "") + "\n";
+  }
+  return out.replace(/\n{3,}/g, "\n\n").trim();
 }
 
 /**

@@ -30,11 +30,15 @@ const VAR_PATTERNS = [
 export function protectVariables(text) {
   const map = {};
   let counter = 0;
+  const byMatch = new Map();
   let result = text;
   for (const pattern of VAR_PATTERNS) {
     result = result.replace(new RegExp(pattern.source, "g"), match => {
+      // Same variable → same placeholder, so duplicate lines still dedupe.
+      if (byMatch.has(match)) return byMatch.get(match);
       const key = `\x00VAR${counter++}\x00`;
       map[key] = match;
+      byMatch.set(match, key);
       return key;
     });
   }
@@ -111,10 +115,10 @@ export function removeFiller(text) {
   // (Earlier versions deleted the whole sentence, which removed real instructions,
   // e.g. "Please note that you must never share PII." disappeared entirely.)
   const leadIns = [
-    /\bplease note that\s+/gi,
-    /\bit is important to note that\s+/gi,
-    /\bit's important to note that\s+/gi,
-    /\bit should be noted that\s+/gi,
+    /\bplease note that[,]?\s+/gi,
+    /\bit is important to note that[,]?\s+/gi,
+    /\bit's important to note that[,]?\s+/gi,
+    /\bit should be noted that[,]?\s+/gi,
     /\bplease be advised that\s+/gi,
     /\bit goes without saying(?: that)?[,]?\s+/gi,
     /\bwhat this means is that\s+/gi,
@@ -158,7 +162,7 @@ export function removeHedging(text) {
   ];
   let out = text;
   for (const [p, r] of patterns) out = out.replace(p, r);
-  return out.replace(/\s{2,}/g, " ").trim();
+  return out.replace(/[ \t]{2,}/g, " ").replace(/[ \t]+\n/g, "\n").trim();
 }
 
 export function shortenPhrases(text) {
@@ -265,7 +269,7 @@ export function removeTransitions(text) {
     const re = new RegExp(`(^|(?<=[.!?]\\s))${t}[,]?\\s+`, "gim");
     out = out.replace(re, "$1");
   }
-  return out.replace(/\s{2,}/g, " ").trim();
+  return out.replace(/[ \t]{2,}/g, " ").replace(/[ \t]+\n/g, "\n").trim();
 }
 
 export function removeParentheticals(text) {
@@ -281,7 +285,7 @@ export function removeParentheticals(text) {
   ];
   let out = text;
   for (const p of patterns) out = out.replace(p, "");
-  return out.replace(/\s{2,}/g, " ").trim();
+  return out.replace(/[ \t]{2,}/g, " ").replace(/[ \t]+\n/g, "\n").trim();
 }
 
 export function numberWordsToNumerals(text) {
