@@ -14,6 +14,8 @@ Most prompt compressors (e.g. LLMLingua) run a language model to decide what to 
 
 ---
 
+> 🔧 **Upgrade to 1.0.3 or later.** 1.0.2 and earlier could corrupt ```json blocks at `low` (repeated lines such as `}` or `"qty": 1` were removed as duplicates), and `medium` kept only about 22% of critical facts. Both are fixed and covered by the benchmark and tests.
+
 ## Three ways to use it
 
 ### Web tool
@@ -87,9 +89,9 @@ Pick a level — every algorithm at or below that risk runs automatically.
 | `'none'` | Whitespace, unicode normalization, indentation | 4% avg (0–24%) |
 | `'very-low'` | + Filler lead-ins, phrase shortening, JSON/SQL minify | 9% avg (0–32%) |
 | `'low'` ✅ default | + Hedging removal, code comments, deduplication, stack traces | **23% avg (2–59%)**, 100% of critical facts kept |
-| `'medium'` ⚠️ | + TF-IDF, TextRank, fuzzy/n-gram/Levenshtein dedup | 86% avg, but **only 22% of critical facts kept** |
+| `'medium'`  | + Near-duplicate removal (fuzzy / n-gram / Levenshtein), TextRank on plain prose only | 24% avg (5–59%), 100% of critical facts kept |
 
-> ⚠️ **`medium` is lossy summarization, not compression.** It keeps a fraction of the sentences and can drop instructions, numbers and IDs. Use it only for background context you'd be happy to see summarized, never for system prompts, tool output or anything with rules in it. Savings are biggest on JSON, code, logs and repeated content. Prose that is already concise saves only a few percent at the safe levels.
+> **`medium` = `low` + near-duplicate removal + light summarization of plain prose.** Code blocks, lists, tables, `Key: value` lines, questions, and any sentence with a rule, number, ID or variable are never removed. On the dense prompts in the benchmark it saves about the same as `low` (24% vs 23%) and kept 94/94 critical facts. It helps most on long, chatty prose. *(Before 1.0.3, `medium` chained three summarizers and kept only 22% of critical facts. Upgrade if you used it.)*
 
 ---
 
@@ -138,35 +140,28 @@ Supported: `{{var}}`, `{var}`, `${var}`, `<tag>`, `[[var]]`, `%VAR%`
 | Support bot system prompt | 325 | 309 | **5%** | $48 | 12/12 ✅ |
 | RAG context (4 retrieved docs) | 431 | 313 | **27%** | $354 | 13/13 ✅ |
 | Agent instructions + tool specs | 333 | 305 | **8%** | $84 | 17/17 ✅ |
-| Tool output (JSON orders) | 448 | 235 | **48%** | $639 | 11/11 ✅ |
+| Tool output (JSON orders) | 448 | 229 | **49%** | $657 | 11/11 ✅ |
 | Code review request (Python) | 292 | 121 | **59%** | $513 | 9/9 ✅ |
 | Production logs + stack trace | 873 | 691 | **21%** | $546 | 9/9 ✅ |
 | Chat history (8 turns) | 310 | 303 | **2%** | $21 | 11/11 ✅ |
 | Email thread to summarize | 327 | 309 | **6%** | $54 | 12/12 ✅ |
-| **Total** | **3,339** | **2,586** | **23%** | **$2,259** | **94/94** |
+| **Total** | **3,339** | **2,580** | **23%** | **$2,277** | **94/94** |
 
 \* At $3 per 1M input tokens. For your model, multiply by (your price ÷ 3). Tokens counted with OpenAI's `o200k_base` tokenizer.
 
 ### By risk level
 
-| Level | Avg. saved | Must-keep facts kept |
-|---|---:|:---:|
-| `very-low` | 9% | 94/94 (100%) |
-| `low` | 23% | 94/94 (100%) |
-| `medium` | 86% | 21/94 (22%) |
+| Level | Avg. saved | Must-keep facts kept | JSON blocks intact |
+|---|---:|:---:|:---:|
+| `very-low` | 9% | 94/94 (100%) | 1/1 ✅ |
+| `low` | 23% | 94/94 (100%) | 1/1 ✅ |
+| `medium` | 24% | 94/94 (100%) | 1/1 ✅ |
+
+"JSON blocks intact" = every ```json block still parses and holds the same data as the original (null / empty fields are removed on purpose).
 
 Facts lost (if any):
 
-- `medium` · Support bot system prompt: lost 12/12
-- `medium` · RAG context (4 retrieved docs): lost 11/13
-- `medium` · Agent instructions + tool specs: lost 13/17
-- `medium` · Tool output (JSON orders): lost 7/11
-- `medium` · Code review request (Python): lost 2/9
-- `medium` · Production logs + stack trace: lost 8/9
-- `medium` · Chat history (8 turns): lost 9/11
-- `medium` · Email thread to summarize: lost 11/12
-
-The exact facts lost are listed in [`bench/results.json`](bench/results.json).
+- None: every must-keep fact survived at every level.
 
 **Reproduce it:** `cd bench && npm install && npm run bench`
 
@@ -202,9 +197,9 @@ The exact facts lost are listed in [`bench/results.json`](bench/results.json).
 | `fuzzyDeduplicate` | medium | Jaccard-based near-duplicate removal |
 | `ngramDeduplicate` | medium | Bigram/trigram near-duplicate removal |
 | `levenshteinDeduplicate` | medium | Edit-distance near-duplicate removal |
-| `tfidfCompress` | medium | Keep top sentences by TF-IDF score |
-| `textRankCompress` | medium | PageRank-style sentence centrality |
-| `extractiveCompress` | medium | Keep top sentences by Term Frequency |
+| `tfidfCompress` | opt-in | Drop lowest TF-IDF prose sentences (keeps code, lists, rules, numbers) |
+| `textRankCompress` | medium | Drop least central prose sentences (keeps code, lists, rules, numbers) |
+| `extractiveCompress` | opt-in | Drop lowest term-frequency prose sentences (keeps code, lists, rules, numbers) |
 
 ---
 

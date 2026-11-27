@@ -21,7 +21,7 @@ const levelSchema = z
   .default('low')
   .describe(
     "Risk level. 'none' = whitespace/unicode only; 'very-low' = + filler, phrases, JSON/SQL minify; " +
-      "'low' = + hedging, comments, dedup (recommended); 'medium' = + extractive summarization (may drop sentences)."
+      "'low' = + hedging, comments, dedup (recommended); 'medium' = + near-duplicate removal and light summarization of plain prose (code, lists, questions and sentences with rules/numbers/IDs are always kept)."
   );
 
 const statsLine = (s) =>
