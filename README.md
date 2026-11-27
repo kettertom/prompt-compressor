@@ -3,13 +3,14 @@
 > Rule-based prompt compression — reduce LLM token usage without a model, without an API, without sending data anywhere.
 
 [![npm](https://img.shields.io/npm/v/prompt-compressor)](https://www.npmjs.com/package/prompt-compressor)
+[![npm MCP](https://img.shields.io/npm/v/prompt-compressor-mcp?label=mcp)](https://www.npmjs.com/package/prompt-compressor-mcp)
 [![Live](https://img.shields.io/badge/web-prompt--compressor.com-blue)](https://prompt-compressor.com)
 
 ⭐ **Find it useful? [Star it on GitHub](https://github.com/kettertom/prompt-compressor)** · 🐛 **Found a bug or have an idea? [Open an issue](https://github.com/kettertom/prompt-compressor/issues/new)**
 
 ---
 
-## Two ways to use it
+## Three ways to use it
 
 ### Web tool
 **[prompt-compressor.com](https://prompt-compressor.com)** — paste a prompt, pick a risk level, review every change individually, download.
@@ -24,6 +25,44 @@ import { compress } from 'prompt-compressor';
 const { output, stats } = compress(systemPrompt, 'low');
 // { tokensBefore: 1200, tokensAfter: 820, saved: 380, reductionPct: 31 }
 ```
+
+### MCP server (Claude, Cursor, VS Code, Windsurf)
+Give your AI assistant compression tools. No install step, because your client runs it with `npx`.
+
+**Claude Code:**
+```bash
+claude mcp add prompt-compressor -- npx -y prompt-compressor-mcp
+```
+
+**Claude Desktop / Cursor / Windsurf** (`claude_desktop_config.json`, `~/.cursor/mcp.json`, `~/.codeium/windsurf/mcp_config.json`):
+```json
+{
+  "mcpServers": {
+    "prompt-compressor": {
+      "command": "npx",
+      "args": ["-y", "prompt-compressor-mcp"]
+    }
+  }
+}
+```
+
+**VS Code** (`.vscode/mcp.json`):
+```json
+{
+  "servers": {
+    "prompt-compressor": { "type": "stdio", "command": "npx", "args": ["-y", "prompt-compressor-mcp"] }
+  }
+}
+```
+
+| Tool | What it does |
+|---|---|
+| `compress_prompt` | Compress text at a chosen risk level and return token stats |
+| `compress_file` | Compress a local file (read-only, the file is not modified) |
+| `compare_levels` | Show the savings at every risk level side by side |
+| `estimate_tokens` | Quick token count |
+
+Then just ask: *"Compress the system prompt in `prompts/support.md` at low risk and show how many tokens it saves."* More details are in the [MCP package README](src/mcp-package/README.md).
 
 ---
 
@@ -66,7 +105,7 @@ const { output, stats } = compress(text, {
 import { removeFiller, tfidfCompress, deduplicateLines } from 'prompt-compressor';
 ```
 
-### In a MCP server or Bedrock pipeline
+### Inside your own MCP server or Bedrock pipeline
 ```js
 import { compress } from 'prompt-compressor';
 
@@ -125,14 +164,25 @@ Supported: `{{var}}`, `{var}`, `${var}`, `<tag>`, `[[var]]`, `%VAR%`
 │   ├── App.jsx          ← UI
 │   ├── ReviewDiffView.jsx
 │   └── ...
-└── npm-package/         ← npm package (separate, zero shared code)
-    ├── src/
-    │   ├── algorithms.js
-    │   └── protect.js
-    ├── index.js
-    ├── index.d.ts
-    └── package.json
+    ├── npm-package/     ← npm package `prompt-compressor` (separate, zero shared code)
+    │   ├── src/
+    │   │   ├── algorithms.js
+    │   │   └── protect.js
+    │   ├── test/
+    │   ├── index.js
+    │   ├── index.d.ts
+    │   └── package.json
+    └── mcp-package/     ← MCP server `prompt-compressor-mcp` (uses the npm package)
+        ├── index.js     ← tools: compress_prompt, compress_file, compare_levels, estimate_tokens
+        ├── bin.js       ← stdio entry point
+        ├── test/
+        └── server.json  ← MCP registry manifest
 ```
+
+### Releasing
+Push a tag and GitHub Actions publishes to npm (needs the `NPM_TOKEN` secret). Use a new version number every time, because tag names can't be reused.
+- Library: bump `src/npm-package/package.json`, then `git tag npm-vX.Y.Z && git push origin npm-vX.Y.Z`
+- MCP server: bump `src/mcp-package/package.json`, then `git tag mcp-vX.Y.Z && git push origin mcp-vX.Y.Z`. Publish the library first if the MCP server needs a new library version.
 
 ---
 
