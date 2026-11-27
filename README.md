@@ -180,9 +180,7 @@ Supported: `{{var}}`, `{var}`, `${var}`, `<tag>`, `[[var]]`, `%VAR%`
 ```
 
 ### Releasing
-Push a tag and GitHub Actions publishes to npm (needs the `NPM_TOKEN` secret). Use a new version number every time, because tag names can't be reused.
-- Library: bump `src/npm-package/package.json`, then `git tag npm-vX.Y.Z && git push origin npm-vX.Y.Z`
-- MCP server: bump `src/mcp-package/package.json`, then `git tag mcp-vX.Y.Z && git push origin mcp-vX.Y.Z`. Publish the library first if the MCP server needs a new library version.
+Bump `version` in `src/npm-package/package.json` and/or `src/mcp-package/package.json`, then merge to `main`. The **Release to npm** workflow publishes any version that isn't on npm yet, library first and then the MCP server. It needs the `NPM_TOKEN` secret. Pushing an `npm-v*` / `mcp-v*` tag or using "Run workflow" also works.
 
 ---
 

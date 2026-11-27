@@ -1,0 +1,84 @@
+name: Release to npm
+
+# Publishes whenever a new version lands on main (or on npm-v* / mcp-v* tags).
+# Each job skips itself if that exact version is already on npm, so it is safe
+# to run on every push. To release: bump "version" in the package.json and merge.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/npm-package/**'
+      - 'src/mcp-package/**'
+      - '.github/workflows/release.yml'
+    tags: ['npm-v*', 'mcp-v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write   # npm provenance
+
+jobs:
+  library:
+    name: prompt-compressor
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./src/npm-package
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+      - name: Already published?
+        id: check
+        run: |
+          V=$(node -p "require('./package.json').version")
+          if npm view "prompt-compressor@$V" version >/dev/null 2>&1; then
+            echo "prompt-compressor@$V is already on npm, skipping"; echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "will publish prompt-compressor@$V"; echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Test
+        if: steps.check.outputs.skip == 'false'
+        run: npm test
+      - name: Publish
+        if: steps.check.outputs.skip == 'false'
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  mcp:
+    name: prompt-compressor-mcp
+    needs: library          # the MCP server depends on the library being live
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./src/mcp-package
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+      - name: Already published?
+        id: check
+        run: |
+          V=$(node -p "require('./package.json').version")
+          if npm view "prompt-compressor-mcp@$V" version >/dev/null 2>&1; then
+            echo "prompt-compressor-mcp@$V is already on npm, skipping"; echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "will publish prompt-compressor-mcp@$V"; echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Install and test
+        if: steps.check.outputs.skip == 'false'
+        run: |
+          # registry can take a minute to serve a just-published library version
+          for i in 1 2 3 4 5 6; do npm install && break; echo "retrying in 20s"; sleep 20; done
+          npm test
+      - name: Publish
+        if: steps.check.outputs.skip == 'false'
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
