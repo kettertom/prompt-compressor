@@ -5,6 +5,7 @@
 [![npm](https://img.shields.io/npm/v/prompt-compressor)](https://www.npmjs.com/package/prompt-compressor)
 [![npm MCP](https://img.shields.io/npm/v/prompt-compressor-mcp?label=mcp)](https://www.npmjs.com/package/prompt-compressor-mcp)
 [![Live](https://img.shields.io/badge/web-prompt--compressor.com-blue)](https://prompt-compressor.com)
+[![kettertom/prompt-compressor MCP server](https://glama.ai/mcp/servers/kettertom/prompt-compressor/badges/score.svg)](https://glama.ai/mcp/servers/kettertom/prompt-compressor)
 
 ⭐ **Find it useful? [Star it on GitHub](https://github.com/kettertom/prompt-compressor)** · 🐛 **Found a bug or have an idea? [Open an issue](https://github.com/kettertom/prompt-compressor/issues/new)**
 
