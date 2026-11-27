@@ -1,0 +1,30 @@
+name: Publish MCP server to npm
+
+on:
+  push:
+    tags:
+      - 'mcp-v*'   # triggers on tags like mcp-v1.0.0
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write   # npm provenance
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install and test
+        run: npm install && npm test
+        working-directory: ./src/mcp-package
+
+      - name: Publish
+        run: npm publish --provenance --access public
+        working-directory: ./src/mcp-package
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -1,0 +1,37 @@
+{
+  "name": "prompt-compressor-mcp",
+  "version": "1.0.0",
+  "mcpName": "io.github.kettertom/prompt-compressor",
+  "description": "MCP server for rule-based prompt compression — cut LLM token usage without a model, without an API, without sending data anywhere.",
+  "type": "module",
+  "main": "index.js",
+  "bin": {
+    "prompt-compressor-mcp": "bin.js"
+  },
+  "exports": {
+    ".": "./index.js"
+  },
+  "files": ["index.js", "bin.js", "README.md"],
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "prompt-compressor": "^1.0.1",
+    "zod": "^4.0.0"
+  },
+  "keywords": [
+    "mcp", "mcp-server", "model-context-protocol", "prompt", "compression",
+    "llm", "tokens", "claude", "cursor", "token-optimization"
+  ],
+  "author": "Tom Ketter",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kettertom/prompt-compressor.git",
+    "directory": "src/mcp-package"
+  },
+  "bugs": { "url": "https://github.com/kettertom/prompt-compressor/issues" },
+  "homepage": "https://prompt-compressor.com",
+  "engines": { "node": ">=18" }
+}

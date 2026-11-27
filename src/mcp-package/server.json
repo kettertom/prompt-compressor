@@ -1,0 +1,19 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
+  "name": "io.github.kettertom/prompt-compressor",
+  "description": "Rule-based prompt compression: cut LLM tokens with no model, no API, fully local.",
+  "repository": {
+    "url": "https://github.com/kettertom/prompt-compressor",
+    "source": "github",
+    "subfolder": "src/mcp-package"
+  },
+  "version": "1.0.0",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "prompt-compressor-mcp",
+      "version": "1.0.0",
+      "transport": { "type": "stdio" }
+    }
+  ]
+}
