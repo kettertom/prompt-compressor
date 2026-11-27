@@ -1,6 +1,6 @@
 {
   "name": "prompt-compressor-mcp",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "mcpName": "io.github.kettertom/prompt-compressor",
   "description": "MCP server for rule-based prompt compression — cut LLM token usage without a model, without an API, without sending data anywhere.",
   "type": "module",
