@@ -52,11 +52,16 @@ export const LEVELS = {
     'base64Hex', 'stackTraces',
     'lineDedup', 'sentenceDedup',
   ],
+  // One summarizer only (they used to be chained, compounding to ~25% kept).
+  // tfidf / extractive remain available as opt-in options.
   medium: [
     'fuzzyDedup', 'ngram', 'levenshtein',
-    'tfidf', 'textrank', 'extractive',
+    'textrank',
   ],
 };
+
+// Opt-in steps that are not part of any level by default
+const OPTIONAL_STEPS = ['tfidf', 'extractive'];
 
 // Ordered from safest to riskiest for pipeline execution
 const ALL_STEPS_ORDERED = [
@@ -64,6 +69,7 @@ const ALL_STEPS_ORDERED = [
   ...LEVELS['very-low'],
   ...LEVELS.low,
   ...LEVELS.medium,
+  ...OPTIONAL_STEPS,
 ];
 
 // Steps eligible for each level (cumulative)
@@ -71,15 +77,15 @@ function stepsForLevel(level) {
   if (level === 'none')     return [...LEVELS.none];
   if (level === 'very-low') return [...LEVELS.none, ...LEVELS['very-low']];
   if (level === 'low')      return [...LEVELS.none, ...LEVELS['very-low'], ...LEVELS.low];
-  if (level === 'medium')   return ALL_STEPS_ORDERED;
+  if (level === 'medium')   return [...LEVELS.none, ...LEVELS['very-low'], ...LEVELS.low, ...LEVELS.medium];
   throw new Error(`Unknown level: "${level}". Use 'none', 'very-low', 'low', or 'medium'.`);
 }
 
 // ─── Default params ───────────────────────────────────────────
 const DEFAULTS = {
-  extractiveRatio:    0.65,
-  tfidfRatio:         0.65,
-  textrankRatio:      0.65,
+  extractiveRatio:    0.75,
+  tfidfRatio:         0.75,
+  textrankRatio:      0.75,
   fuzzyThreshold:     0.75,
   ngramSize:          2,
   ngramThreshold:     0.6,

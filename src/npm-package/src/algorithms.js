@@ -295,7 +295,7 @@ export function removeNullJsonFields(text) {
         if (v === null || v === "" || (Array.isArray(v) && v.length === 0)) return undefined;
         return v;
       }));
-      return "```json\n" + JSON.stringify(cleaned, null, 2) + "\n```";
+      return "```json\n" + JSON.stringify(cleaned) + "\n```";
     } catch { return _; }
   });
 }
@@ -359,21 +359,25 @@ export function stripBase64AndHex(text) {
  * Catches: "Return JSON only\nReturn JSON only\nReturn JSON only" → one line.
  * @risk low | @savings 5–30%
  */
+// Lines that look like code or JSON legitimately repeat ("}", "qty": 1, return x;)
+const CODE_LIKE_LINE = /^[\s\[\]{}(),;:"'`]*$|^\s*"[^"]*"\s*:|[{\[,;]\s*$|^\s*(?:return|break|continue|end|fi|done|else)\b/;
 export function deduplicateLines(text) {
-  const seen = new Set();
-  return text.split("\n").filter(line => {
-    const key = line.trim().toLowerCase();
-    if (key === "") return true;
-    if (seen.has(key)) return false;
-    seen.add(key); return true;
-  }).join("\n");
+  return outsideFences(text, (block) => {
+    const seen = new Set();
+    return block.split("\n").filter(line => {
+      const key = line.trim().toLowerCase();
+      if (key === "" || CODE_LIKE_LINE.test(line)) return true;
+      if (seen.has(key)) return false;
+      seen.add(key); return true;
+    }).join("\n");
+  });
 }
 
 /**
  * Removes repeated sentences (exact match, case-insensitive).
  * @risk low | @savings 5–15%
  */
-export function deduplicateSentences(text) {
+function deduplicateSentencesBlock(text) {
   // Split but keep each separator, so line breaks and paragraphs survive.
   const parts = text.split(/((?<=[.!?])\s+)/);
   const seen = new Set();
@@ -386,174 +390,213 @@ export function deduplicateSentences(text) {
   }
   return out.replace(/\n{3,}/g, "\n\n").trim();
 }
+export function deduplicateSentences(text) {
+  return outsideFences(text, deduplicateSentencesBlock);
+}
+
+// ─── Shared core for the 'medium' steps ─────────────────────
+// Every medium step works on "units" (sentences / lines) and only ever
+// REMOVES units it has positively chosen to drop. Everything else, including
+// short units, line breaks and paragraph breaks, is kept as-is.
+// Units inside ``` fenced blocks, structured lines (lists, headings, tables,
+// "Key: value", JSON-ish, log lines) and "critical" sentences (rules,
+// numbers, IDs, variables, emails, URLs) are never dropped.
+
+const UNIT_SPLIT = /((?<=[.!?])[ \t]+|[ \t]*\n\s*)/;
+// Chat transcript lines ("User: …", "Assistant: …") are prose, not structure
+const SPEAKER = /^\s*(?:user|assistant|human|ai|system|customer|agent|bot)\s*:/i;
+const STRUCTURED_RE = /^\s*(?:[-*+•>|#]|\d+[.)]\s|[\[{"'`]|[A-Za-z][\w .'-]{0,30}:\s|\d{4}-\d{2}-\d{2})/;
+const STRUCTURED_LINE = { test: (line) => !SPEAKER.test(line) && STRUCTURED_RE.test(line) };
+const CRITICAL = /\d|\{\{?|\$\{|%\w+%|@|https?:\/\/|`|\b(?:must|never|always|only|not|don't|do not|cannot|can't|required?|forbidden|no later than|deadline|exactly|at least|at most)\b/i;
+
+function parseUnits(text) {
+  const parts = text.split(UNIT_SPLIT);
+  const units = [];
+  let lineStart = true, line = "";
+  for (let i = 0; i < parts.length; i += 2) {
+    const sepBefore = i === 0 ? "" : parts[i - 1];
+    if (i > 0 && sepBefore.includes("\n")) { lineStart = true; }
+    if (lineStart) {
+      // the full line this unit starts
+      let j = i, l = parts[i];
+      while (j + 2 < parts.length && !parts[j + 1].includes("\n")) { l += parts[j + 1] + parts[j + 2]; j += 2; }
+      line = l;
+    }
+    units.push({ text: parts[i], sepBefore, line });
+    lineStart = false;
+  }
+  return units;
+}
+
+function rebuild(units, keep) {
+  let out = "", pending = "";
+  units.forEach((u, i) => {
+    const sep = (pending.match(/\n/g) || []).length > (u.sepBefore.match(/\n/g) || []).length ? pending : u.sepBefore;
+    if (keep[i]) { out += (out ? sep : u.sepBefore) + u.text; pending = ""; }
+    else { pending = sep; }
+  });
+  return out.replace(/\n{3,}/g, "\n\n").trim();
+}
+
+// Apply fn only outside ``` fenced blocks
+function outsideFences(text, fn) {
+  return text.split(/(```[\s\S]*?```)/g).map(p => {
+    if (p.startsWith("```") || !p.trim()) return p;
+    const lead = p.match(/^\s*/)[0], trail = p.match(/\s*$/)[0];
+    return lead + fn(p.trim()) + trail;
+  }).join("");
+}
+
+// Questions, direct requests and word-based deadlines are the task itself
+const TASK = /\?\s*$|\b(?:could|can|would|will) you\b|\b(?:today|tomorrow|tonight|by (?:the )?end of|eod|eow|asap|due|by (?:monday|tuesday|wednesday|thursday|friday|saturday|sunday))\b/i;
+const isProtected = (u) =>
+  !u.text.trim() || STRUCTURED_LINE.test(u.line) || CRITICAL.test(u.text) || TASK.test(u.text);
+
+// numbers/IDs must match for two units to count as duplicates
+const numSig = (s) => (s.match(/[\w-]*\d[\w.\/-]*/g) || []).join("|");
+
+function dedupBy(text, isDup, minLen) {
+  return outsideFences(text, (block) => {
+    const units = parseUnits(block);
+    const keep = units.map(() => true);
+    const seen = [];
+    units.forEach((u, i) => {
+      const t = u.text.trim();
+      if (t.length <= minLen || STRUCTURED_LINE.test(u.line)) return; // too short / structured: never compared, never dropped
+      if (seen.some(k => numSig(k) === numSig(t) && isDup(k, t))) keep[i] = false;
+      else seen.push(t);
+    });
+    return rebuild(units, keep);
+  });
+}
+
+function summarizeBy(text, ratio, scoreFn) {
+  return outsideFences(text, (block) => {
+    const units = parseUnits(block);
+    const cand = units.map((u, i) => ({ u, i })).filter(({ u }) => !isProtected(u) && u.text.trim().length > 20);
+    if (cand.length < 3) return block;
+    const drop = Math.floor(cand.length * (1 - ratio));
+    if (drop <= 0) return block;
+    const scores = scoreFn(cand.map(c => c.u.text));
+    const dropIdx = new Set(cand.map((c, k) => ({ i: c.i, s: scores[k] }))
+      .sort((a, b) => a.s - b.s).slice(0, drop).map(x => x.i));
+    return rebuild(units, units.map((_, i) => !dropIdx.has(i)));
+  });
+}
+
+const words = (s, min = 3) => s.toLowerCase().match(new RegExp(`\\b\\w{${min},}\\b`, "g")) || [];
 
 /**
  * Removes near-duplicate sentences using Jaccard similarity on word sets.
+ * Keeps line structure; sentences that differ in numbers/IDs are never duplicates.
  * @param threshold - similarity threshold (0–1), default 0.75
- * @risk medium | @savings 5–20%
+ * @risk medium | @savings 0–20%
  */
 export function fuzzyDeduplicate(text, threshold = 0.75) {
-  const sentences = text.split(/(?<=[.!?])\s+/).filter(s => s.trim().length > 20);
-  if (sentences.length < 4) return text;
-  function jaccard(a, b) {
-    const sa = new Set(a.toLowerCase().match(/\b\w{3,}\b/g) || []);
-    const sb = new Set(b.toLowerCase().match(/\b\w{3,}\b/g) || []);
+  const jaccard = (a, b) => {
+    const sa = new Set(words(a)), sb = new Set(words(b));
     const inter = [...sa].filter(w => sb.has(w)).length;
     const union = new Set([...sa, ...sb]).size;
     return union === 0 ? 0 : inter / union;
-  }
-  const kept = [];
-  for (const s of sentences) {
-    if (!kept.some(k => jaccard(k, s) >= threshold)) kept.push(s);
-  }
-  return kept.join(" ").trim();
+  };
+  return dedupBy(text, (a, b) => jaccard(a, b) >= threshold, 20);
 }
 
 /**
- * Near-duplicate removal using bigram/trigram overlap.
- * Better than Jaccard for paraphrases: "Return only JSON" vs "Only return JSON".
- * @param n - gram size (default 2)
- * @param threshold - similarity threshold (default 0.6)
- * @risk medium | @savings 5–20%
+ * N-gram overlap deduplication. Keeps line structure; numbers/IDs must match.
+ * @risk medium | @savings 0–15%
  */
 export function ngramDeduplicate(text, n = 2, threshold = 0.6) {
-  const sentences = text.split(/(?<=[.!?])\s+/).filter(s => s.trim().length > 15);
-  if (sentences.length <= 2) return text;
-  function grams(s) {
-    const words = s.toLowerCase().match(/\b\w+\b/g) || [];
+  const grams = (s) => {
+    const w = s.toLowerCase().match(/\b\w+\b/g) || [];
     const gs = new Set();
-    for (let i = 0; i <= words.length - n; i++) gs.add(words.slice(i, i + n).join(" "));
+    for (let i = 0; i <= w.length - n; i++) gs.add(w.slice(i, i + n).join(" "));
     return gs;
-  }
-  const gramSets = sentences.map(grams);
-  const kept = [];
-  for (let i = 0; i < sentences.length; i++) {
-    const isDup = kept.some((_, ki) => {
-      const a = gramSets[i], b = gramSets[kept[ki]];
-      const inter = [...a].filter(g => b.has(g)).length;
-      const union = new Set([...a, ...b]).size;
-      return union > 0 && inter / union >= threshold;
-    });
-    if (!isDup) kept.push(i);
-  }
-  return kept.map(i => sentences[i]).join(" ").trim();
+  };
+  return dedupBy(text, (a, b) => {
+    const ga = grams(a), gb = grams(b);
+    const inter = [...ga].filter(g => gb.has(g)).length;
+    const union = new Set([...ga, ...gb]).size;
+    return union > 0 && inter / union >= threshold;
+  }, 15);
 }
 
 /**
  * Edit-distance deduplication. Catches "Return JSON only." vs "Return JSON only!"
+ * Keeps line structure; numbers/IDs must match.
  * @param threshold - max normalized edit distance (default 0.15)
- * @risk medium | @savings 3–15%
+ * @risk medium | @savings 0–15%
  */
 export function levenshteinDeduplicate(text, threshold = 0.15) {
-  function lev(a, b) {
+  const lev = (a, b) => {
     const m = a.length, n = b.length;
     if (Math.abs(m - n) > Math.max(m, n) * 0.4) return Math.max(m, n);
     const dp = Array.from({ length: m + 1 }, (_, i) => [i]);
     for (let j = 0; j <= n; j++) dp[0][j] = j;
     for (let i = 1; i <= m; i++)
       for (let j = 1; j <= n; j++)
-        dp[i][j] = a[i-1] === b[j-1] ? dp[i-1][j-1] : 1 + Math.min(dp[i-1][j], dp[i][j-1], dp[i-1][j-1]);
+        dp[i][j] = a[i - 1] === b[j - 1] ? dp[i - 1][j - 1] : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
     return dp[m][n];
-  }
-  const sentences = text.split(/(?<=[.!?])\s+/).filter(s => s.trim().length > 10);
-  if (sentences.length <= 2) return text;
-  const kept = [];
-  for (const s of sentences) {
-    if (!kept.some(k => lev(s.toLowerCase(), k.toLowerCase()) / Math.max(s.length, k.length) <= threshold))
-      kept.push(s);
-  }
-  return kept.join(" ").trim();
+  };
+  return dedupBy(text, (a, b) => lev(a.toLowerCase(), b.toLowerCase()) / Math.max(a.length, b.length) <= threshold, 10);
 }
 
 // ════════════════════════════════════════════════════════════
 // ADVANCED (EXTRACTIVE)
+// Only plain prose is summarized. Code blocks, structured lines and
+// critical sentences (rules, numbers, IDs, variables) are always kept.
 // ════════════════════════════════════════════════════════════
 
 /**
- * Keeps top N% sentences scored by Term Frequency.
- * @param ratio - fraction of sentences to keep (default 0.65)
- * @risk medium | @savings 20–50%
+ * Drops the lowest-scoring prose sentences by term frequency.
+ * @param ratio - fraction of droppable prose sentences to keep (default 0.75)
+ * @risk medium | @savings 0–30%
  */
-export function extractiveCompress(text, ratio = 0.65) {
-  const sentences = text.split(/(?<=[.!?\n])\s+/).map(s => s.trim()).filter(s => s.length > 20);
-  if (sentences.length <= 3) return text;
-  const freq = {};
-  const allWords = text.toLowerCase().match(/\b\w{4,}\b/g) || [];
-  for (const w of allWords) freq[w] = (freq[w] || 0) + 1;
-  const scored = sentences.map((s, i) => {
-    const words = s.toLowerCase().match(/\b\w{4,}\b/g) || [];
-    const score = words.reduce((acc, w) => acc + (freq[w] || 0), 0) / (words.length || 1);
-    return { s, score, i };
-  });
-  const keepCount = Math.max(2, Math.round(sentences.length * ratio));
-  return scored.sort((a, b) => b.score - a.score).slice(0, keepCount)
-    .sort((a, b) => a.i - b.i).map(x => x.s).join(" ").trim();
-}
-
-/**
- * TF-IDF sentence scoring — penalizes words common across all sentences.
- * Better than pure TF for prompts with boilerplate patterns.
- * @param ratio - fraction of sentences to keep (default 0.65)
- * @risk medium | @savings 20–50%
- */
-export function tfidfCompress(text, ratio = 0.65) {
-  const sentences = text.split(/(?<=[.!?\n])\s+/).map(s => s.trim()).filter(s => s.length > 20);
-  if (sentences.length <= 3) return text;
-  const n = sentences.length;
-  const docFreq = {};
-  const sentWords = sentences.map(s => {
-    const words = s.toLowerCase().match(/\b\w{3,}\b/g) || [];
-    [...new Set(words)].forEach(w => { docFreq[w] = (docFreq[w] || 0) + 1; });
-    return words;
-  });
-  const scored = sentences.map((s, i) => {
-    const words = sentWords[i];
-    if (!words.length) return { s, score: 0, i };
+export function extractiveCompress(text, ratio = 0.75) {
+  return summarizeBy(text, ratio, (sents) => {
     const freq = {};
-    words.forEach(w => { freq[w] = (freq[w] || 0) + 1; });
-    const score = words.reduce((acc, w) => {
-      const tf = freq[w] / words.length;
-      const idf = Math.log((n + 1) / ((docFreq[w] || 0) + 1));
-      return acc + tf * idf;
-    }, 0) / words.length;
-    return { s, score, i };
+    for (const w of words(sents.join(" "), 4)) freq[w] = (freq[w] || 0) + 1;
+    return sents.map(s => { const w = words(s, 4); return w.reduce((a, x) => a + (freq[x] || 0), 0) / (w.length || 1); });
   });
-  const keepCount = Math.max(2, Math.round(n * ratio));
-  return scored.sort((a, b) => b.score - a.score).slice(0, keepCount)
-    .sort((a, b) => a.i - b.i).map(x => x.s).join(" ").trim();
 }
 
 /**
- * TextRank — PageRank-style algorithm on sentence similarity graph.
- * Sentences most "central" to the document survive.
- * @param ratio - fraction of sentences to keep (default 0.65)
- * @risk medium | @savings 20–50%
+ * Drops the lowest-scoring prose sentences by TF-IDF.
+ * @param ratio - fraction of droppable prose sentences to keep (default 0.75)
+ * @risk medium | @savings 0–30%
  */
-export function textRankCompress(text, ratio = 0.65, damping = 0.85, iterations = 20) {
-  const sentences = text.split(/(?<=[.!?\n])\s+/).map(s => s.trim()).filter(s => s.length > 15);
-  if (sentences.length <= 3) return text;
-  const n = sentences.length;
-  const sets = sentences.map(s => new Set((s.toLowerCase().match(/\b\w{3,}\b/g) || [])));
-  const sim = (i, j) => {
-    const a = sets[i], b = sets[j];
-    if (!a.size || !b.size) return 0;
-    const inter = [...a].filter(w => b.has(w)).length;
-    return inter / (Math.log(a.size + 1) + Math.log(b.size + 1));
-  };
-  const matrix = Array.from({ length: n }, (_, i) =>
-    Array.from({ length: n }, (__, j) => i === j ? 0 : sim(i, j))
-  );
-  const normalized = matrix.map(row => {
-    const sum = row.reduce((a, b) => a + b, 0);
-    return sum === 0 ? row.map(() => 1 / n) : row.map(v => v / sum);
+export function tfidfCompress(text, ratio = 0.75) {
+  return summarizeBy(text, ratio, (sents) => {
+    const n = sents.length, df = {};
+    const sw = sents.map(s => { const w = words(s); new Set(w).forEach(x => { df[x] = (df[x] || 0) + 1; }); return w; });
+    return sw.map(w => {
+      if (!w.length) return 0;
+      const f = {}; w.forEach(x => { f[x] = (f[x] || 0) + 1; });
+      return w.reduce((a, x) => a + (f[x] / w.length) * Math.log((n + 1) / ((df[x] || 0) + 1)), 0) / w.length;
+    });
   });
-  let scores = Array(n).fill(1 / n);
-  for (let iter = 0; iter < iterations; iter++)
-    scores = scores.map((_, i) =>
-      (1 - damping) / n + damping * scores.reduce((acc, s, j) => acc + s * normalized[j][i], 0)
-    );
-  const keepCount = Math.max(2, Math.round(n * ratio));
-  return sentences.map((s, i) => ({ s, score: scores[i], i }))
-    .sort((a, b) => b.score - a.score).slice(0, keepCount)
-    .sort((a, b) => a.i - b.i).map(x => x.s).join(" ").trim();
+}
+
+/**
+ * TextRank — PageRank-style ranking on the sentence similarity graph.
+ * Drops the least "central" prose sentences.
+ * @param ratio - fraction of droppable prose sentences to keep (default 0.75)
+ * @risk medium | @savings 0–30%
+ */
+export function textRankCompress(text, ratio = 0.75, damping = 0.85, iterations = 20) {
+  return summarizeBy(text, ratio, (sents) => {
+    const n = sents.length;
+    const sets = sents.map(s => new Set(words(s)));
+    const sim = (i, j) => {
+      const a = sets[i], b = sets[j];
+      if (!a.size || !b.size) return 0;
+      return [...a].filter(w => b.has(w)).length / (Math.log(a.size + 1) + Math.log(b.size + 1));
+    };
+    const m = Array.from({ length: n }, (_, i) => Array.from({ length: n }, (__, j) => (i === j ? 0 : sim(i, j))));
+    const norm = m.map(r => { const s = r.reduce((a, b) => a + b, 0); return s === 0 ? r.map(() => 1 / n) : r.map(v => v / s); });
+    let sc = Array(n).fill(1 / n);
+    for (let it = 0; it < iterations; it++)
+      sc = sc.map((_, i) => (1 - damping) / n + damping * sc.reduce((acc, s, j) => acc + s * norm[j][i], 0));
+    return sc;
+  });
 }

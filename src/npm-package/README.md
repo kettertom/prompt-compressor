@@ -8,6 +8,8 @@
 
 **No model. No API key. Deterministic. Zero dependencies. Your data never leaves your machine.** At the default level it cut **23% of tokens across 8 real-world prompt types while keeping 94/94 critical instructions**. See the [benchmark](https://github.com/kettertom/prompt-compressor#benchmark).
 
+> 🔧 **Upgrade to 1.0.3 or later.** 1.0.2 and earlier could corrupt ```json blocks at `low` (repeated lines such as `}` or `"qty": 1` were removed as duplicates), and `medium` kept only about 22% of critical facts. Both are fixed and covered by the benchmark and tests.
+
 ## Install
 
 ```bash
@@ -34,7 +36,7 @@ Pick a level — every algorithm at or below that risk runs automatically.
 | `'none'` | Whitespace, unicode normalization, indentation | 4% avg (0–24%) |
 | `'very-low'` | + Filler removal, phrase shortening, JSON/SQL minify | 9% avg (0–32%) |
 | `'low'` | + Hedging removal, code comments, deduplication, stack trace truncation | **23% avg (2–59%)**, 100% of critical facts kept |
-| `'medium'` | + Fuzzy dedup, TF-IDF, TextRank (may drop sentences) | 86% avg, but **only 22% of critical facts kept** ⚠️ |
+| `'medium'` | + Near-duplicate removal (fuzzy / n-gram / Levenshtein), TextRank on plain prose only | 24% avg (5–59%), 100% of critical facts kept |
 
 ```js
 compress(text, 'none')      // safest
@@ -43,7 +45,7 @@ compress(text, 'low')       // recommended default
 compress(text, 'medium')    // most aggressive
 ```
 
-> ⚠️ **`medium` is lossy summarization, not compression.** On the benchmark it kept only 22% of critical facts. Never use it for system prompts, tool output or anything with rules in it.
+> **`medium` = `low` + near-duplicate removal + light summarization of plain prose.** Code blocks, lists, tables, `Key: value` lines, questions, and any sentence with a rule, number, ID or variable are never removed. On the dense prompts in the benchmark it saves about the same as `low` (24% vs 23%) and kept 94/94 critical facts. It helps most on long, chatty prose. *(Before 1.0.3, `medium` chained three summarizers and kept only 22% of critical facts. Upgrade if you used it.)*
 
 ## Custom options
 
@@ -157,9 +159,9 @@ compress("Please {{user_name}}, utilize this in order to process {context}", 'lo
 | `fuzzyDeduplicate` | medium | Jaccard-based near-duplicate removal |
 | `ngramDeduplicate` | medium | Bigram/trigram near-duplicate removal |
 | `levenshteinDeduplicate` | medium | Edit-distance near-duplicate removal |
-| `tfidfCompress` | medium | Keep top sentences by TF-IDF score |
-| `textRankCompress` | medium | Keep top sentences by PageRank centrality |
-| `extractiveCompress` | medium | Keep top sentences by Term Frequency |
+| `tfidfCompress` | opt-in | Drop lowest TF-IDF prose sentences (keeps code, lists, rules, numbers) |
+| `textRankCompress` | medium | Drop least central prose sentences (keeps code, lists, rules, numbers) |
+| `extractiveCompress` | opt-in | Drop lowest term-frequency prose sentences (keeps code, lists, rules, numbers) |
 
 ## License
 

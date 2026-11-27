@@ -13,6 +13,7 @@
       "factsKept": 12,
       "factsTotal": 12,
       "missing": [],
+      "jsonIntact": null,
       "dollarsPer1MCalls": 48
     },
     {
@@ -26,6 +27,7 @@
       "factsKept": 12,
       "factsTotal": 12,
       "missing": [],
+      "jsonIntact": null,
       "dollarsPer1MCalls": 48
     },
     {
@@ -33,26 +35,14 @@
       "label": "Support bot system prompt",
       "level": "medium",
       "before": 325,
-      "after": 62,
-      "saved": 263,
-      "pct": 80.92307692307692,
-      "factsKept": 0,
+      "after": 309,
+      "saved": 16,
+      "pct": 4.923076923076923,
+      "factsKept": 12,
       "factsTotal": 12,
-      "missing": [
-        "never share customer data",
-        "last 4 digits",
-        "30 days",
-        "20%",
-        "SORRY20",
-        "Tier 2",
-        "escalate_ticket",
-        "24 hours",
-        "roadmap",
-        "anything else",
-        "\\{\\{customer_name\\}\\}",
-        "\\{\\{plan_name\\}\\}"
-      ],
-      "dollarsPer1MCalls": 789
+      "missing": [],
+      "jsonIntact": null,
+      "dollarsPer1MCalls": 48
     },
     {
       "file": "02-rag-context.txt",
@@ -65,6 +55,7 @@
       "factsKept": 13,
       "factsTotal": 13,
       "missing": [],
+      "jsonIntact": null,
       "dollarsPer1MCalls": 63
     },
     {
@@ -78,6 +69,7 @@
       "factsKept": 13,
       "factsTotal": 13,
       "missing": [],
+      "jsonIntact": null,
       "dollarsPer1MCalls": 354
     },
     {
@@ -85,25 +77,14 @@
       "label": "RAG context (4 retrieved docs)",
       "level": "medium",
       "before": 431,
-      "after": 38,
-      "saved": 393,
-      "pct": 91.18329466357308,
-      "factsKept": 2,
+      "after": 313,
+      "saved": 118,
+      "pct": 27.378190255220417,
+      "factsKept": 13,
       "factsTotal": 13,
-      "missing": [
-        "(three|3)\\)? days",
-        "10:00",
-        "16:00",
-        "Tuesdays",
-        "\\$300",
-        "60 days",
-        "full-disk encryption",
-        "VPN",
-        "1 hour",
-        "security@company\\.example",
-        "\\{question\\}"
-      ],
-      "dollarsPer1MCalls": 1179
+      "missing": [],
+      "jsonIntact": null,
+      "dollarsPer1MCalls": 354
     },
     {
       "file": "03-agent-instructions.txt",
@@ -116,6 +97,7 @@
       "factsKept": 17,
       "factsTotal": 17,
       "missing": [],
+      "jsonIntact": null,
       "dollarsPer1MCalls": 45
     },
     {
@@ -129,6 +111,7 @@
       "factsKept": 17,
       "factsTotal": 17,
       "missing": [],
+      "jsonIntact": null,
       "dollarsPer1MCalls": 84
     },
     {
@@ -136,27 +119,14 @@
       "label": "Agent instructions + tool specs",
       "level": "medium",
       "before": 333,
-      "after": 64,
-      "saved": 269,
-      "pct": 80.78078078078079,
-      "factsKept": 4,
+      "after": 305,
+      "saved": 28,
+      "pct": 8.408408408408409,
+      "factsKept": 17,
       "factsTotal": 17,
-      "missing": [
-        "fetch_page",
-        "get_financials",
-        "write_file",
-        "(5|five) times",
-        "cite",
-        "private",
-        "500 words",
-        "\\{\\{ticker\\}\\}",
-        "Summary",
-        "Business Model",
-        "Financials",
-        "Risks",
-        "Verdict"
-      ],
-      "dollarsPer1MCalls": 807
+      "missing": [],
+      "jsonIntact": null,
+      "dollarsPer1MCalls": 84
     },
     {
       "file": "04-tool-output-json.txt",
@@ -169,6 +139,7 @@
       "factsKept": 11,
       "factsTotal": 11,
       "missing": [],
+      "jsonIntact": true,
       "dollarsPer1MCalls": 435
     },
     {
@@ -176,34 +147,28 @@
       "label": "Tool output (JSON orders)",
       "level": "low",
       "before": 448,
-      "after": 235,
-      "saved": 213,
-      "pct": 47.544642857142854,
+      "after": 229,
+      "saved": 219,
+      "pct": 48.88392857142857,
       "factsKept": 11,
       "factsTotal": 11,
       "missing": [],
-      "dollarsPer1MCalls": 639
+      "jsonIntact": true,
+      "dollarsPer1MCalls": 657
     },
     {
       "file": "04-tool-output-json.txt",
       "label": "Tool output (JSON orders)",
       "level": "medium",
       "before": 448,
-      "after": 60,
-      "saved": 388,
-      "pct": 86.60714285714286,
-      "factsKept": 4,
+      "after": 229,
+      "saved": 219,
+      "pct": 48.88392857142857,
+      "factsKept": 11,
       "factsTotal": 11,
-      "missing": [
-        "ORD-55012",
-        "ORD-55377",
-        "ORD-55401",
-        "shipped",
-        "399",
-        "89",
-        "\"gift_wrap\":\\s*true"
-      ],
-      "dollarsPer1MCalls": 1164
+      "missing": [],
+      "jsonIntact": true,
+      "dollarsPer1MCalls": 657
     },
     {
       "file": "05-code-review.txt",
@@ -216,6 +181,7 @@
       "factsKept": 9,
       "factsTotal": 9,
       "missing": [],
+      "jsonIntact": null,
       "dollarsPer1MCalls": 207
     },
     {
@@ -229,6 +195,7 @@
       "factsKept": 9,
       "factsTotal": 9,
       "missing": [],
+      "jsonIntact": null,
       "dollarsPer1MCalls": 513
     },
     {
@@ -236,16 +203,14 @@
       "label": "Code review request (Python)",
       "level": "medium",
       "before": 292,
-      "after": 72,
-      "saved": 220,
-      "pct": 75.34246575342466,
-      "factsKept": 7,
+      "after": 121,
+      "saved": 171,
+      "pct": 58.56164383561644,
+      "factsKept": 9,
       "factsTotal": 9,
-      "missing": [
-        "correctness",
-        "checkout"
-      ],
-      "dollarsPer1MCalls": 660
+      "missing": [],
+      "jsonIntact": null,
+      "dollarsPer1MCalls": 513
     },
     {
       "file": "06-logs.txt",
@@ -258,6 +223,7 @@
       "factsKept": 9,
       "factsTotal": 9,
       "missing": [],
+      "jsonIntact": null,
       "dollarsPer1MCalls": 75
     },
     {
@@ -271,6 +237,7 @@
       "factsKept": 9,
       "factsTotal": 9,
       "missing": [],
+      "jsonIntact": null,
       "dollarsPer1MCalls": 546
     },
     {
@@ -278,22 +245,14 @@
       "label": "Production logs + stack trace",
       "level": "medium",
       "before": 873,
-      "after": 27,
-      "saved": 846,
-      "pct": 96.90721649484536,
-      "factsKept": 1,
+      "after": 670,
+      "saved": 203,
+      "pct": 23.253150057273768,
+      "factsKept": 9,
       "factsTotal": 9,
-      "missing": [
-        "5000ms",
-        "stripe-eu",
-        "ReadTimeout",
-        "attempt 3/3",
-        "permanently failed",
-        "size=10",
-        "30s to 5s",
-        "2026\\.11\\.27-3"
-      ],
-      "dollarsPer1MCalls": 2538
+      "missing": [],
+      "jsonIntact": null,
+      "dollarsPer1MCalls": 609
     },
     {
       "file": "07-chat-history.txt",
@@ -306,6 +265,7 @@
       "factsKept": 11,
       "factsTotal": 11,
       "missing": [],
+      "jsonIntact": null,
       "dollarsPer1MCalls": -3
     },
     {
@@ -319,6 +279,7 @@
       "factsKept": 11,
       "factsTotal": 11,
       "missing": [],
+      "jsonIntact": null,
       "dollarsPer1MCalls": 21
     },
     {
@@ -326,23 +287,14 @@
       "label": "Chat history (8 turns)",
       "level": "medium",
       "before": 310,
-      "after": 52,
-      "saved": 258,
-      "pct": 83.2258064516129,
-      "factsKept": 2,
+      "after": 279,
+      "saved": 31,
+      "pct": 10,
+      "factsKept": 11,
       "factsTotal": 11,
-      "missing": [
-        "March",
-        "(4|four) days",
-        "food",
-        "history",
-        "walking",
-        "museums",
-        "150 euros",
-        "hotel",
-        "day trip"
-      ],
-      "dollarsPer1MCalls": 774
+      "missing": [],
+      "jsonIntact": null,
+      "dollarsPer1MCalls": 93
     },
     {
       "file": "08-email-thread.txt",
@@ -355,6 +307,7 @@
       "factsKept": 12,
       "factsTotal": 12,
       "missing": [],
+      "jsonIntact": null,
       "dollarsPer1MCalls": 27
     },
     {
@@ -368,6 +321,7 @@
       "factsKept": 12,
       "factsTotal": 12,
       "missing": [],
+      "jsonIntact": null,
       "dollarsPer1MCalls": 54
     },
     {
@@ -375,25 +329,14 @@
       "label": "Email thread to summarize",
       "level": "medium",
       "before": 327,
-      "after": 84,
-      "saved": 243,
-      "pct": 74.31192660550458,
-      "factsKept": 1,
+      "after": 309,
+      "saved": 18,
+      "pct": 5.504587155963303,
+      "factsKept": 12,
       "factsTotal": 12,
-      "missing": [
-        "January 15",
-        "February 3",
-        "January 10",
-        "regression testing",
-        "feature list",
-        "marketing",
-        "billing page",
-        "Q2",
-        "end of the week",
-        "staging",
-        "3 bullet points"
-      ],
-      "dollarsPer1MCalls": 729
+      "missing": [],
+      "jsonIntact": null,
+      "dollarsPer1MCalls": 54
     }
   ]
 }

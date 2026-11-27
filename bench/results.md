@@ -6,32 +6,25 @@
 | Support bot system prompt | 325 | 309 | **5%** | $48 | 12/12 ✅ |
 | RAG context (4 retrieved docs) | 431 | 313 | **27%** | $354 | 13/13 ✅ |
 | Agent instructions + tool specs | 333 | 305 | **8%** | $84 | 17/17 ✅ |
-| Tool output (JSON orders) | 448 | 235 | **48%** | $639 | 11/11 ✅ |
+| Tool output (JSON orders) | 448 | 229 | **49%** | $657 | 11/11 ✅ |
 | Code review request (Python) | 292 | 121 | **59%** | $513 | 9/9 ✅ |
 | Production logs + stack trace | 873 | 691 | **21%** | $546 | 9/9 ✅ |
 | Chat history (8 turns) | 310 | 303 | **2%** | $21 | 11/11 ✅ |
 | Email thread to summarize | 327 | 309 | **6%** | $54 | 12/12 ✅ |
-| **Total** | **3,339** | **2,586** | **23%** | **$2,259** | **94/94** |
+| **Total** | **3,339** | **2,580** | **23%** | **$2,277** | **94/94** |
 
 \* At $3 per 1M input tokens. For your model, multiply by (your price ÷ 3). Tokens counted with OpenAI's `o200k_base` tokenizer.
 
 ### By risk level
 
-| Level | Avg. saved | Must-keep facts kept |
-|---|---:|:---:|
-| `very-low` | 9% | 94/94 (100%) |
-| `low` | 23% | 94/94 (100%) |
-| `medium` | 86% | 21/94 (22%) |
+| Level | Avg. saved | Must-keep facts kept | JSON blocks intact |
+|---|---:|:---:|:---:|
+| `very-low` | 9% | 94/94 (100%) | 1/1 ✅ |
+| `low` | 23% | 94/94 (100%) | 1/1 ✅ |
+| `medium` | 24% | 94/94 (100%) | 1/1 ✅ |
+
+"JSON blocks intact" = every ```json block still parses and holds the same data as the original (null / empty fields are removed on purpose).
 
 Facts lost (if any):
 
-- `medium` · Support bot system prompt: lost 12/12
-- `medium` · RAG context (4 retrieved docs): lost 11/13
-- `medium` · Agent instructions + tool specs: lost 13/17
-- `medium` · Tool output (JSON orders): lost 7/11
-- `medium` · Code review request (Python): lost 2/9
-- `medium` · Production logs + stack trace: lost 8/9
-- `medium` · Chat history (8 turns): lost 9/11
-- `medium` · Email thread to summarize: lost 11/12
-
-The exact facts lost are listed in [`bench/results.json`](results.json).
+- None: every must-keep fact survived at every level.

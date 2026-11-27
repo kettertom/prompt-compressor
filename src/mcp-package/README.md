@@ -29,9 +29,9 @@ Resource: `prompt-compressor://levels` lists which algorithms run at each level.
 | `none` | Whitespace, unicode normalization, indentation | 4% avg (0–24%) |
 | `very-low` | + filler lead-ins, phrase shortening, JSON/SQL minify | 9% avg (0–32%) |
 | `low` (default) | + hedging, code comments, deduplication, stack-trace truncation | **23% avg (2–59%)**, 100% of critical facts kept |
-| `medium` | + fuzzy dedup, TF-IDF, TextRank (may drop sentences) | 86% avg, but **only 22% of critical facts kept** ⚠️ |
+| `medium` | + Near-duplicate removal (fuzzy / n-gram / Levenshtein), TextRank on plain prose only | 24% avg (5–59%), 100% of critical facts kept |
 
-> ⚠️ **`medium` is lossy summarization, not compression.** On the benchmark it kept only 22% of critical facts. Never use it for system prompts, tool output or anything with rules in it.
+> **`medium` = `low` + near-duplicate removal + light summarization of plain prose.** Code blocks, lists, tables, `Key: value` lines, questions, and any sentence with a rule, number, ID or variable are never removed. On the dense prompts in the benchmark it saves about the same as `low` (24% vs 23%) and kept 94/94 critical facts. It helps most on long, chatty prose. *(Before 1.0.3, `medium` chained three summarizers and kept only 22% of critical facts. Upgrade if you used it.)*
 
 ## Install
 

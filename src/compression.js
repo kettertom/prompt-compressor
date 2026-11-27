@@ -455,53 +455,125 @@ export function compressRedundancy(text) {
   return result.join(" ").trim();
 }
 
-export function fuzzyDeduplicate(text, threshold = 0.75) {
-  // Jaccard similarity on word sets — remove near-duplicate sentences
-  const sentences = text.split(/(?<=[.!?])\s+/).filter(s => s.trim().length > 20);
-  if (sentences.length < 4) return text;
+// ─── Shared core for the 'medium' steps ─────────────────────
+// Every medium step works on "units" (sentences / lines) and only ever
+// REMOVES units it has positively chosen to drop. Everything else, including
+// short units, line breaks and paragraph breaks, is kept as-is.
+// Units inside ``` fenced blocks, structured lines (lists, headings, tables,
+// "Key: value", JSON-ish, log lines) and "critical" sentences (rules,
+// numbers, IDs, variables, emails, URLs) are never dropped.
 
-  function jaccard(a, b) {
-    const sa = new Set(a.toLowerCase().match(/\b\w{3,}\b/g) || []);
-    const sb = new Set(b.toLowerCase().match(/\b\w{3,}\b/g) || []);
-    const intersection = [...sa].filter(w => sb.has(w)).length;
-    const union = new Set([...sa, ...sb]).size;
-    return union === 0 ? 0 : intersection / union;
-  }
+const UNIT_SPLIT = /((?<=[.!?])[ \t]+|[ \t]*\n\s*)/;
+// Chat transcript lines ("User: …", "Assistant: …") are prose, not structure
+const SPEAKER = /^\s*(?:user|assistant|human|ai|system|customer|agent|bot)\s*:/i;
+const STRUCTURED_RE = /^\s*(?:[-*+•>|#]|\d+[.)]\s|[\[{"'`]|[A-Za-z][\w .'-]{0,30}:\s|\d{4}-\d{2}-\d{2})/;
+const STRUCTURED_LINE = { test: (line) => !SPEAKER.test(line) && STRUCTURED_RE.test(line) };
+const CRITICAL = /\d|\{\{?|\$\{|%\w+%|@|https?:\/\/|`|\b(?:must|never|always|only|not|don't|do not|cannot|can't|required?|forbidden|no later than|deadline|exactly|at least|at most)\b/i;
 
-  const kept = [];
-  for (const s of sentences) {
-    const isDuplicate = kept.some(k => jaccard(k, s) >= threshold);
-    if (!isDuplicate) kept.push(s);
+function parseUnits(text) {
+  const parts = text.split(UNIT_SPLIT);
+  const units = [];
+  let lineStart = true, line = "";
+  for (let i = 0; i < parts.length; i += 2) {
+    const sepBefore = i === 0 ? "" : parts[i - 1];
+    if (i > 0 && sepBefore.includes("\n")) { lineStart = true; }
+    if (lineStart) {
+      // the full line this unit starts
+      let j = i, l = parts[i];
+      while (j + 2 < parts.length && !parts[j + 1].includes("\n")) { l += parts[j + 1] + parts[j + 2]; j += 2; }
+      line = l;
+    }
+    units.push({ text: parts[i], sepBefore, line });
+    lineStart = false;
   }
-  return kept.join(" ").trim();
+  return units;
 }
 
-export function extractiveCompress(text, ratio = 0.65) {
-  const sentences = text
-    .split(/(?<=[.!?\n])\s+/)
-    .map(s => s.trim())
-    .filter(s => s.length > 20);
-
-  if (sentences.length <= 3) return text;
-
-  const allWords = text.toLowerCase().match(/\b\w{4,}\b/g) || [];
-  const freq = {};
-  for (const w of allWords) freq[w] = (freq[w] || 0) + 1;
-
-  const scored = sentences.map((s, i) => {
-    const words = s.toLowerCase().match(/\b\w{4,}\b/g) || [];
-    const score = words.reduce((acc, w) => acc + (freq[w] || 0), 0) / (words.length || 1);
-    return { s, score, i };
+function rebuild(units, keep) {
+  let out = "", pending = "";
+  units.forEach((u, i) => {
+    const sep = (pending.match(/\n/g) || []).length > (u.sepBefore.match(/\n/g) || []).length ? pending : u.sepBefore;
+    if (keep[i]) { out += (out ? sep : u.sepBefore) + u.text; pending = ""; }
+    else { pending = sep; }
   });
+  return out.replace(/\n{3,}/g, "\n\n").trim();
+}
 
-  const keepCount = Math.max(2, Math.round(sentences.length * ratio));
-  return scored
-    .sort((a, b) => b.score - a.score)
-    .slice(0, keepCount)
-    .sort((a, b) => a.i - b.i)
-    .map(x => x.s)
-    .join(" ")
-    .trim();
+// Apply fn only outside ``` fenced blocks
+function outsideFences(text, fn) {
+  return text.split(/(```[\s\S]*?```)/g).map(p => {
+    if (p.startsWith("```") || !p.trim()) return p;
+    const lead = p.match(/^\s*/)[0], trail = p.match(/\s*$/)[0];
+    return lead + fn(p.trim()) + trail;
+  }).join("");
+}
+
+// Questions, direct requests and word-based deadlines are the task itself
+const TASK = /\?\s*$|\b(?:could|can|would|will) you\b|\b(?:today|tomorrow|tonight|by (?:the )?end of|eod|eow|asap|due|by (?:monday|tuesday|wednesday|thursday|friday|saturday|sunday))\b/i;
+const isProtected = (u) =>
+  !u.text.trim() || STRUCTURED_LINE.test(u.line) || CRITICAL.test(u.text) || TASK.test(u.text);
+
+// numbers/IDs must match for two units to count as duplicates
+const numSig = (s) => (s.match(/[\w-]*\d[\w.\/-]*/g) || []).join("|");
+
+function dedupBy(text, isDup, minLen) {
+  return outsideFences(text, (block) => {
+    const units = parseUnits(block);
+    const keep = units.map(() => true);
+    const seen = [];
+    units.forEach((u, i) => {
+      const t = u.text.trim();
+      if (t.length <= minLen || STRUCTURED_LINE.test(u.line)) return; // too short / structured: never compared, never dropped
+      if (seen.some(k => numSig(k) === numSig(t) && isDup(k, t))) keep[i] = false;
+      else seen.push(t);
+    });
+    return rebuild(units, keep);
+  });
+}
+
+function summarizeBy(text, ratio, scoreFn) {
+  return outsideFences(text, (block) => {
+    const units = parseUnits(block);
+    const cand = units.map((u, i) => ({ u, i })).filter(({ u }) => !isProtected(u) && u.text.trim().length > 20);
+    if (cand.length < 3) return block;
+    const drop = Math.floor(cand.length * (1 - ratio));
+    if (drop <= 0) return block;
+    const scores = scoreFn(cand.map(c => c.u.text));
+    const dropIdx = new Set(cand.map((c, k) => ({ i: c.i, s: scores[k] }))
+      .sort((a, b) => a.s - b.s).slice(0, drop).map(x => x.i));
+    return rebuild(units, units.map((_, i) => !dropIdx.has(i)));
+  });
+}
+
+const words = (s, min = 3) => s.toLowerCase().match(new RegExp(`\\b\\w{${min},}\\b`, "g")) || [];
+
+/**
+ * Removes near-duplicate sentences using Jaccard similarity on word sets.
+ * Keeps line structure; sentences that differ in numbers/IDs are never duplicates.
+ * @param threshold - similarity threshold (0–1), default 0.75
+ * @risk medium | @savings 0–20%
+ */
+export function fuzzyDeduplicate(text, threshold = 0.75) {
+  const jaccard = (a, b) => {
+    const sa = new Set(words(a)), sb = new Set(words(b));
+    const inter = [...sa].filter(w => sb.has(w)).length;
+    const union = new Set([...sa, ...sb]).size;
+    return union === 0 ? 0 : inter / union;
+  };
+  return dedupBy(text, (a, b) => jaccard(a, b) >= threshold, 20);
+}
+
+/**
+ * Drops the lowest-scoring prose sentences by term frequency.
+ * @param ratio - fraction of droppable prose sentences to keep (default 0.75)
+ * @risk medium | @savings 0–30%
+ */
+export function extractiveCompress(text, ratio = 0.75) {
+  return summarizeBy(text, ratio, (sents) => {
+    const freq = {};
+    for (const w of words(sents.join(" "), 4)) freq[w] = (freq[w] || 0) + 1;
+    return sents.map(s => { const w = words(s, 4); return w.reduce((a, x) => a + (freq[x] || 0), 0) / (w.length || 1); });
+  });
 }
 
 // ════════════════════════════════════════════════════════════
@@ -567,7 +639,7 @@ export function removeNullJsonFields(text) {
         if (v === null || v === "" || (Array.isArray(v) && v.length === 0)) return undefined;
         return v;
       }));
-      return "```json\n" + JSON.stringify(cleaned, null, 2) + "\n```";
+      return "```json\n" + JSON.stringify(cleaned) + "\n```";
     } catch { return _; }
   });
 }
@@ -649,240 +721,155 @@ export function collapseRepetitions(text) {
 // ─── Line-level exact dedup ───────────────────────────────────
 // Removes repeated lines (case-insensitive, trimmed).
 // Catches things like "Return JSON only\nReturn JSON only\nReturn JSON only"
+// Lines that look like code or JSON legitimately repeat ("}", "qty": 1, return x;)
+const CODE_LIKE_LINE = /^[\s\[\]{}(),;:"'`]*$|^\s*"[^"]*"\s*:|[{\[,;]\s*$|^\s*(?:return|break|continue|end|fi|done|else)\b/;
 export function deduplicateLines(text) {
-  const seen = new Set();
-  return text
-    .split("\n")
-    .filter(line => {
+  return outsideFences(text, (block) => {
+    const seen = new Set();
+    return block.split("\n").filter(line => {
       const key = line.trim().toLowerCase();
-      if (key === "") return true; // preserve blank lines
+      if (key === "" || CODE_LIKE_LINE.test(line)) return true;
       if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    })
-    .join("\n");
+      seen.add(key); return true;
+    }).join("\n");
+  });
 }
 
 // ─── TF-IDF sentence scoring ──────────────────────────────────
 // Better than pure TF: penalizes common words across all sentences (low IDF).
-export function tfidfCompress(text, ratio = 0.65) {
-  const sentences = text
-    .split(/(?<=[.!?\n])\s+/)
-    .map(s => s.trim())
-    .filter(s => s.length > 20);
-  if (sentences.length <= 3) return text;
-  const n = sentences.length;
-  const docFreq = {};
-  const sentWords = sentences.map(s => {
-    const words = s.toLowerCase().match(/\b\w{3,}\b/g) || [];
-    [...new Set(words)].forEach(w => { docFreq[w] = (docFreq[w] || 0) + 1; });
-    return words;
+/**
+ * Drops the lowest-scoring prose sentences by TF-IDF.
+ * @param ratio - fraction of droppable prose sentences to keep (default 0.75)
+ * @risk medium | @savings 0–30%
+ */
+export function tfidfCompress(text, ratio = 0.75) {
+  return summarizeBy(text, ratio, (sents) => {
+    const n = sents.length, df = {};
+    const sw = sents.map(s => { const w = words(s); new Set(w).forEach(x => { df[x] = (df[x] || 0) + 1; }); return w; });
+    return sw.map(w => {
+      if (!w.length) return 0;
+      const f = {}; w.forEach(x => { f[x] = (f[x] || 0) + 1; });
+      return w.reduce((a, x) => a + (f[x] / w.length) * Math.log((n + 1) / ((df[x] || 0) + 1)), 0) / w.length;
+    });
   });
-  const scored = sentences.map((s, i) => {
-    const words = sentWords[i];
-    if (!words.length) return { s, score: 0, i };
-    const freq = {};
-    words.forEach(w => { freq[w] = (freq[w] || 0) + 1; });
-    const score = words.reduce((acc, w) => {
-      const tf = freq[w] / words.length;
-      const idf = Math.log((n + 1) / ((docFreq[w] || 0) + 1));
-      return acc + tf * idf;
-    }, 0) / words.length;
-    return { s, score, i };
-  });
-  const keepCount = Math.max(2, Math.round(n * ratio));
-  return scored
-    .sort((a, b) => b.score - a.score)
-    .slice(0, keepCount)
-    .sort((a, b) => a.i - b.i)
-    .map(x => x.s)
-    .join(" ")
-    .trim();
 }
 
 // ─── TextRank sentence scoring ────────────────────────────────
 // PageRank-style algorithm on a sentence similarity graph.
 // Sentences that are most "central" to the document survive.
-export function textRankCompress(text, ratio = 0.65, damping = 0.85, iterations = 20) {
-  const sentences = text
-    .split(/(?<=[.!?\n])\s+/)
-    .map(s => s.trim())
-    .filter(s => s.length > 15);
-  if (sentences.length <= 3) return text;
-  const n = sentences.length;
-  const sets = sentences.map(s => new Set((s.toLowerCase().match(/\b\w{3,}\b/g) || [])));
-  const sim = (i, j) => {
-    const a = sets[i], b = sets[j];
-    if (!a.size || !b.size) return 0;
-    const inter = [...a].filter(w => b.has(w)).length;
-    return inter / (Math.log(a.size + 1) + Math.log(b.size + 1));
-  };
-  const matrix = Array.from({ length: n }, (_, i) =>
-    Array.from({ length: n }, (__, j) => i === j ? 0 : sim(i, j))
-  );
-  const normalized = matrix.map(row => {
-    const sum = row.reduce((a, b) => a + b, 0);
-    return sum === 0 ? row.map(() => 1 / n) : row.map(v => v / sum);
+/**
+ * TextRank — PageRank-style ranking on the sentence similarity graph.
+ * Drops the least "central" prose sentences.
+ * @param ratio - fraction of droppable prose sentences to keep (default 0.75)
+ * @risk medium | @savings 0–30%
+ */
+export function textRankCompress(text, ratio = 0.75, damping = 0.85, iterations = 20) {
+  return summarizeBy(text, ratio, (sents) => {
+    const n = sents.length;
+    const sets = sents.map(s => new Set(words(s)));
+    const sim = (i, j) => {
+      const a = sets[i], b = sets[j];
+      if (!a.size || !b.size) return 0;
+      return [...a].filter(w => b.has(w)).length / (Math.log(a.size + 1) + Math.log(b.size + 1));
+    };
+    const m = Array.from({ length: n }, (_, i) => Array.from({ length: n }, (__, j) => (i === j ? 0 : sim(i, j))));
+    const norm = m.map(r => { const s = r.reduce((a, b) => a + b, 0); return s === 0 ? r.map(() => 1 / n) : r.map(v => v / s); });
+    let sc = Array(n).fill(1 / n);
+    for (let it = 0; it < iterations; it++)
+      sc = sc.map((_, i) => (1 - damping) / n + damping * sc.reduce((acc, s, j) => acc + s * norm[j][i], 0));
+    return sc;
   });
-  let scores = Array(n).fill(1 / n);
-  for (let iter = 0; iter < iterations; iter++) {
-    scores = scores.map((_, i) =>
-      (1 - damping) / n + damping * scores.reduce((acc, s, j) => acc + s * normalized[j][i], 0)
-    );
-  }
-  const keepCount = Math.max(2, Math.round(n * ratio));
-  return sentences
-    .map((s, i) => ({ s, score: scores[i], i }))
-    .sort((a, b) => b.score - a.score)
-    .slice(0, keepCount)
-    .sort((a, b) => a.i - b.i)
-    .map(x => x.s)
-    .join(" ")
-    .trim();
 }
 
 // ─── N-Gram Similarity dedup ──────────────────────────────────
 // Uses bigram/trigram overlap instead of word-level Jaccard.
 // Catches paraphrases that word-level misses:
 // "Return only JSON" vs "Only return JSON" — low Jaccard, high bigram sim.
-function ngramSet(text, n = 2) {
-  const words = text.toLowerCase().match(/\b\w+\b/g) || [];
-  const grams = new Set();
-  for (let i = 0; i <= words.length - n; i++) grams.add(words.slice(i, i + n).join(" "));
-  return grams;
-}
 
+/**
+ * N-gram overlap deduplication. Keeps line structure; numbers/IDs must match.
+ * @risk medium | @savings 0–15%
+ */
 export function ngramDeduplicate(text, n = 2, threshold = 0.6) {
-  const sentences = text.split(/(?<=[.!?])\s+/).filter(s => s.trim().length > 15);
-  if (sentences.length <= 2) return text;
-  const grams = sentences.map(s => ngramSet(s, n));
-  const kept = [];
-  for (let i = 0; i < sentences.length; i++) {
-    const isDup = kept.some((_, ki) => {
-      const a = grams[i], b = grams[kept[ki]];
-      const inter = [...a].filter(g => b.has(g)).length;
-      const union = new Set([...a, ...b]).size;
-      return union > 0 && inter / union >= threshold;
-    });
-    if (!isDup) kept.push(i);
-  }
-  return kept.map(i => sentences[i]).join(" ").trim();
+  const grams = (s) => {
+    const w = s.toLowerCase().match(/\b\w+\b/g) || [];
+    const gs = new Set();
+    for (let i = 0; i <= w.length - n; i++) gs.add(w.slice(i, i + n).join(" "));
+    return gs;
+  };
+  return dedupBy(text, (a, b) => {
+    const ga = grams(a), gb = grams(b);
+    const inter = [...ga].filter(g => gb.has(g)).length;
+    const union = new Set([...ga, ...gb]).size;
+    return union > 0 && inter / union >= threshold;
+  }, 15);
 }
 
 // ─── Levenshtein Distance dedup ───────────────────────────────
 // Edit-distance based near-duplicate removal.
 // Catches "Return JSON only." vs "Return JSON only!" or minor typos.
-function levenshtein(a, b) {
-  const m = a.length, n = b.length;
-  if (Math.abs(m - n) > Math.max(m, n) * 0.4) return Math.max(m, n); // fast reject
-  const dp = Array.from({ length: m + 1 }, (_, i) => [i]);
-  for (let j = 0; j <= n; j++) dp[0][j] = j;
-  for (let i = 1; i <= m; i++)
-    for (let j = 1; j <= n; j++)
-      dp[i][j] = a[i-1] === b[j-1]
-        ? dp[i-1][j-1]
-        : 1 + Math.min(dp[i-1][j], dp[i][j-1], dp[i-1][j-1]);
-  return dp[m][n];
-}
 
+/**
+ * Edit-distance deduplication. Catches "Return JSON only." vs "Return JSON only!"
+ * Keeps line structure; numbers/IDs must match.
+ * @param threshold - max normalized edit distance (default 0.15)
+ * @risk medium | @savings 0–15%
+ */
 export function levenshteinDeduplicate(text, threshold = 0.15) {
-  // threshold = max allowed edit distance as fraction of longer string
-  const sentences = text.split(/(?<=[.!?])\s+/).filter(s => s.trim().length > 10);
-  if (sentences.length <= 2) return text;
-  const kept = [];
-  for (const s of sentences) {
-    const isDup = kept.some(k => {
-      const dist = levenshtein(s.toLowerCase(), k.toLowerCase());
-      return dist / Math.max(s.length, k.length) <= threshold;
-    });
-    if (!isDup) kept.push(s);
-  }
-  return kept.join(" ").trim();
+  const lev = (a, b) => {
+    const m = a.length, n = b.length;
+    if (Math.abs(m - n) > Math.max(m, n) * 0.4) return Math.max(m, n);
+    const dp = Array.from({ length: m + 1 }, (_, i) => [i]);
+    for (let j = 0; j <= n; j++) dp[0][j] = j;
+    for (let i = 1; i <= m; i++)
+      for (let j = 1; j <= n; j++)
+        dp[i][j] = a[i - 1] === b[j - 1] ? dp[i - 1][j - 1] : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+    return dp[m][n];
+  };
+  return dedupBy(text, (a, b) => lev(a.toLowerCase(), b.toLowerCase()) / Math.max(a.length, b.length) <= threshold, 10);
 }
 
 // ─── Frequent Pattern Mining ──────────────────────────────────
 // Apriori-inspired: finds n-grams that appear frequently across sentences.
 // Sentences composed mostly of "boilerplate" patterns get dropped.
 export function frequentPatternPrune(text, ngramSize = 3, minFreq = 3, boilerplateRatio = 0.6) {
-  const sentences = text.split(/(?<=[.!?])\s+/).filter(s => s.trim().length > 15);
-  if (sentences.length < 4) return text;
-
-  // Count n-gram frequency across all sentences
-  const freq = {};
-  sentences.forEach(s => {
-    const words = s.toLowerCase().match(/\b\w+\b/g) || [];
-    for (let i = 0; i <= words.length - ngramSize; i++) {
-      const gram = words.slice(i, i + ngramSize).join(" ");
-      freq[gram] = (freq[gram] || 0) + 1;
-    }
+  // Drops prose sentences made mostly of boilerplate n-grams that repeat across the text.
+  // Structure, code blocks and critical sentences (rules, numbers, IDs, variables) are kept.
+  return outsideFences(text, (block) => {
+    const units = parseUnits(block);
+    const cand = units.map((u, i) => ({ u, i })).filter(({ u }) => !isProtected(u) && u.text.trim().length > 15);
+    if (cand.length < 4) return block;
+    const grams = (s) => {
+      const w = s.toLowerCase().match(/\b\w+\b/g) || [];
+      const g = [];
+      for (let i = 0; i <= w.length - ngramSize; i++) g.push(w.slice(i, i + ngramSize).join(" "));
+      return g;
+    };
+    const freq = {};
+    cand.forEach(({ u }) => grams(u.text).forEach(g => { freq[g] = (freq[g] || 0) + 1; }));
+    const scored = cand.map(({ u, i }) => {
+      const g = grams(u.text);
+      return { i, b: g.length ? g.filter(x => freq[x] >= minFreq).length / g.length : 0 };
+    });
+    const maxDrop = cand.length - Math.max(2, Math.ceil(cand.length * 0.4));
+    const drop = new Set(scored.filter(x => x.b >= boilerplateRatio).sort((a, b) => b.b - a.b).slice(0, maxDrop).map(x => x.i));
+    return rebuild(units, units.map((_, i) => !drop.has(i)));
   });
-
-  // Score each sentence: fraction of its n-grams that are "frequent" (boilerplate)
-  const scored = sentences.map(s => {
-    const words = s.toLowerCase().match(/\b\w+\b/g) || [];
-    if (words.length < ngramSize) return { s, boilerplate: 0 };
-    let frequent = 0, total = 0;
-    for (let i = 0; i <= words.length - ngramSize; i++) {
-      const gram = words.slice(i, i + ngramSize).join(" ");
-      if ((freq[gram] || 0) >= minFreq) frequent++;
-      total++;
-    }
-    return { s, boilerplate: total > 0 ? frequent / total : 0 };
-  });
-
-  // Drop sentences that are mostly boilerplate patterns (keep at least 40%)
-  const minKeep = Math.max(2, Math.ceil(sentences.length * 0.4));
-  const sorted = [...scored].sort((a, b) => a.boilerplate - b.boilerplate);
-  const keepSet = new Set(sorted.slice(0, Math.max(minKeep, scored.filter(x => x.boilerplate < boilerplateRatio).length)).map(x => x.s));
-  return scored.filter(x => keepSet.has(x.s)).map(x => x.s).join(" ").trim();
 }
-
-// ─── Trie Prefix Compression ──────────────────────────────────
-// Builds a word-level trie across all sentences.
-// Finds groups of sentences sharing a long common prefix — keeps only the longest
-// (most complete) version, dropping the redundant shorter variants.
-//
-// Example:
-//   "You must always respond in English."
-//   "You must always respond formally."
-//   "You must always respond concisely."
-// → keeps all 3 (different endings) — no compression
-//
-//   "You must always be concise."
-//   "You must always be concise and clear."
-// → keeps only "You must always be concise and clear." (superset)
 export function trieCompress(text, minPrefixWords = 4) {
-  const sentences = text.split(/(?<=[.!?])\s+/).filter(s => s.trim().length > 15);
-  if (sentences.length <= 2) return text;
-
-  const tokenize = s => s.toLowerCase().match(/\b\w+\b/g) || [];
-  const tokenized = sentences.map(tokenize);
-
-  function commonPrefixLen(a, b) {
-    let i = 0;
-    while (i < a.length && i < b.length && a[i] === b[i]) i++;
-    return i;
-  }
-
-  const dominated = new Set(); // indices of sentences fully contained by another
-
-  for (let i = 0; i < sentences.length; i++) {
-    if (dominated.has(i)) continue;
-    for (let j = 0; j < sentences.length; j++) {
-      if (i === j || dominated.has(j)) continue;
-      const prefLen = commonPrefixLen(tokenized[i], tokenized[j]);
-      if (prefLen >= minPrefixWords) {
-        // If one is a prefix of the other, drop the shorter one
-        if (tokenized[i].length < tokenized[j].length &&
-            tokenized[j].slice(0, tokenized[i].length).join(" ") === tokenized[i].join(" ")) {
-          dominated.add(i); // i is a prefix of j — drop i
-          break;
-        }
-      }
+  // Drops a sentence when it is a strict word-prefix of a longer sentence in the same text.
+  // Structured lines and code blocks are never touched; line breaks are kept.
+  return outsideFences(text, (block) => {
+    const units = parseUnits(block);
+    const tok = (s) => s.toLowerCase().match(/\b\w+\b/g) || [];
+    const cand = units.map((u, i) => ({ i, t: tok(u.text), u })).filter(c => !STRUCTURED_LINE.test(c.u.line) && c.u.text.trim().length > 15);
+    const keep = units.map(() => true);
+    for (const a of cand) {
+      if (a.t.length < minPrefixWords) continue;
+      if (cand.some(b => b !== a && b.t.length > a.t.length && b.t.slice(0, a.t.length).join(" ") === a.t.join(" "))) keep[a.i] = false;
     }
-  }
-
-  return sentences.filter((_, i) => !dominated.has(i)).join(" ").trim();
+    return rebuild(units, keep);
+  });
 }
 
 // ════════════════════════════════════════════════════════════
@@ -962,7 +949,7 @@ export const STEP_GROUPS = [
   {
     group: "Very low risk",
     steps: [
-      { key: "filler",         label: "Filler removal",           desc: '"Please note that", "it is important to note", "e.g.", "i.e." clauses.',                      risk: "Very low", saving: "10-20%" },
+      { key: "filler",         label: "Filler removal",           desc: 'Drops lead-ins like "Please note that" / "It is important to note that", keeping the sentence.',                      risk: "Very low", saving: "10-20%" },
       { key: "phrases",        label: "Phrase shortening",        desc: '"in order to" to "to", "utilize" to "use", "furthermore" to "also", 50+ rules.',              risk: "Very low", saving: "5-15%"  },
       { key: "numberWords",    label: "Number words to digits",   desc: '"twenty" to "20", "hundred" to "100", etc.',                                                   risk: "Very low", saving: "2-5%"   },
       { key: "normalizeDates", label: "Normalize dates",          desc: '"Monday, December 25th, 2023" to "2023-12-25". Removes day names.',                           risk: "Very low", saving: "2-6%"   },
@@ -1029,19 +1016,19 @@ export const STEP_GROUPS = [
       {
         key: "tfidf", label: "TF-IDF compression",
         desc: "Like extractive, but smarter: penalizes words common across all sentences (low IDF), keeping truly distinctive ones.",
-        risk: "Medium", saving: "20-50%",
+        risk: "Medium", saving: "0-30%",
         explain: 'Improvement over pure TF:\n- TF (term frequency): how often a word appears in this sentence.\n- IDF (inverse document frequency): penalizes words that appear in every sentence — they carry less information.\n- Score = TF × IDF. Sentences with high-IDF words (unique, specific) survive. Sentences full of common words get dropped.\n\nBetter than pure TF for prompts with repeated boilerplate.',
       },
       {
         key: "textrank", label: "TextRank compression",
         desc: "PageRank-style graph algorithm. Sentences that are most 'central' to the whole document survive.",
-        risk: "Medium", saving: "20-50%",
-        explain: 'How it works:\n1. Build a graph where each sentence is a node.\n2. Edges = similarity between sentences (Jaccard on word sets).\n3. Run PageRank: sentences linked to by many other similar sentences score higher.\n4. Keep top N% by score, in original order.\n\nCaptures "central themes" better than TF/TF-IDF.\nBest for: long documents, knowledge bases, RAG context.\nRisky for: instruction prompts where every sentence matters.',
+        risk: "Medium", saving: "0-30%",
+        explain: 'How it works:\n1. Build a graph where each sentence is a node.\n2. Edges = similarity between sentences (Jaccard on word sets).\n3. Run PageRank: sentences linked to by many other similar sentences score higher.\n4. Keep top N% by score, in original order.\n\nCaptures "central themes" better than TF/TF-IDF.\nBest for: long documents, knowledge bases, RAG context.\nOnly plain prose sentences are candidates: code blocks, lists, tables, "Key: value" lines and sentences with rules, numbers, IDs or variables are always kept. Use ONE of TF-IDF / TextRank / Extractive, not all three.',
       },
       {
         key: "extractive", label: "Extractive (TF)",
         desc: "TF-based sentence scoring — keeps only the most information-dense sentences.",
-        risk: "Medium", saving: "20-50%",
+        risk: "Medium", saving: "0-30%",
         explain: 'Classic extractive compression using Term Frequency.\n1. Count how often each word appears across the full text.\n2. Score each sentence by average TF of its words.\n3. Keep top N% in original order.\n\nFastest of the three extractive methods. Use TF-IDF or TextRank for better results.',
       },
     ],
@@ -1067,8 +1054,8 @@ export const DEFAULT_OPTS = {
   fuzzyDedup: false, freqPattern: false, trie: false,
   tfidf: false, textrank: false, extractive: false,
   // params
-  extractiveRatio: 0.65, fuzzyThreshold: 0.75,
-  tfidfRatio: 0.65, textrankRatio: 0.65,
+  extractiveRatio: 0.75, fuzzyThreshold: 0.75,
+  tfidfRatio: 0.75, textrankRatio: 0.75,
   ngramSize: 2, ngramThreshold: 0.6, levenshteinThreshold: 0.15,
 };
 
