@@ -6,6 +6,8 @@
 
 ⭐ **Find it useful? [Star it on GitHub](https://github.com/kettertom/prompt-compressor)** · 🐛 **Found a bug or have an idea? [Open an issue](https://github.com/kettertom/prompt-compressor/issues/new)**
 
+**No model. No API key. Deterministic. Zero dependencies. Your data never leaves your machine.** At the default level it cut **23% of tokens across 8 real-world prompt types while keeping 94/94 critical instructions**. See the [benchmark](https://github.com/kettertom/prompt-compressor#benchmark).
+
 ## Install
 
 ```bash
@@ -27,12 +29,12 @@ console.log(stats);
 
 Pick a level — every algorithm at or below that risk runs automatically.
 
-| Level | What runs | Typical saving |
+| Level | What runs | Measured saving ([benchmark](https://github.com/kettertom/prompt-compressor#benchmark)) |
 |---|---|---|
-| `'none'` | Whitespace, unicode normalization, indentation | 5–15% |
-| `'very-low'` | + Filler removal, phrase shortening, JSON/SQL minify | 15–30% |
-| `'low'` | + Hedging removal, code comments, deduplication, stack trace truncation | 25–45% |
-| `'medium'` | + Fuzzy dedup, TF-IDF, TextRank (may drop sentences) | 30–70% |
+| `'none'` | Whitespace, unicode normalization, indentation | 4% avg (0–24%) |
+| `'very-low'` | + Filler removal, phrase shortening, JSON/SQL minify | 9% avg (0–32%) |
+| `'low'` | + Hedging removal, code comments, deduplication, stack trace truncation | **23% avg (2–59%)**, 100% of critical facts kept |
+| `'medium'` | + Fuzzy dedup, TF-IDF, TextRank (may drop sentences) | 86% avg, but **only 22% of critical facts kept** ⚠️ |
 
 ```js
 compress(text, 'none')      // safest
@@ -40,6 +42,8 @@ compress(text, 'very-low')
 compress(text, 'low')       // recommended default
 compress(text, 'medium')    // most aggressive
 ```
+
+> ⚠️ **`medium` is lossy summarization, not compression.** On the benchmark it kept only 22% of critical facts. Never use it for system prompts, tool output or anything with rules in it.
 
 ## Custom options
 
