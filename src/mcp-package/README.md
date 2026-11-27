@@ -3,6 +3,7 @@
 > MCP server for rule-based prompt compression. Cut LLM token usage without a model, without an API key, and without sending data anywhere.
 
 [![npm](https://img.shields.io/npm/v/prompt-compressor-mcp)](https://www.npmjs.com/package/prompt-compressor-mcp)
+[![kettertom/prompt-compressor MCP server](https://glama.ai/mcp/servers/kettertom/prompt-compressor/badges/score.svg)](https://glama.ai/mcp/servers/kettertom/prompt-compressor)
 
 ⭐ **Find it useful? [Star it on GitHub](https://github.com/kettertom/prompt-compressor)** · 🐛 **Found a bug or have an idea? [Open an issue](https://github.com/kettertom/prompt-compressor/issues/new)**
 
